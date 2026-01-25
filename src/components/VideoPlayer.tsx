@@ -897,11 +897,12 @@ export function VideoPlayer({
 
             {/* Export */}
             <VideoExporter
-              videoRef={mainVideoRef}
+              sequence={sequence}
+              selectedAngle={selectedAngle}
               allSeiMessages={allSeiMessages}
               fps={fps}
               speedUnit={speedUnit}
-              filename={`tesla-${currentMoment.date}-${currentMoment.time.replace(/:/g, '-')}`}
+              filename={`tesla-${sequence.dateRange}-${sequence.timeRange.split(' - ')[0].replace(/:/g, '-')}`}
             />
 
             {/* Divider */}

@@ -4,6 +4,8 @@
 
 **[Live Demo → exportdash.cam](https://exportdash.cam)**
 
+![ExportDash Screenshot](public/screenshot.png)
+
 ## Features
 
 - **Seamless Playback** — Consecutive 1-minute Tesla clips automatically merged into continuous video

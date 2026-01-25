@@ -168,10 +168,15 @@ export function DropZone({ onFilesAdded, hasVideos }: DropZoneProps) {
             />
           </svg>
         </div>
-        <div>
-          <p className="text-xl font-medium text-gray-200">Drop your TeslaCam folder here</p>
-          <p className="text-sm text-gray-500 mt-1">
-            Clips are automatically merged into seamless playback
+        <div className="text-center">
+          <p className="text-xl font-medium text-gray-200">Drop your TeslaCam clips here</p>
+          <p className="text-sm text-gray-500 mt-2 max-w-md">
+            From your Tesla USB drive, navigate to{' '}
+            <span className="text-gray-400 font-mono text-xs">TeslaCam</span> →{' '}
+            <span className="text-gray-400 font-mono text-xs">SavedClips</span>,{' '}
+            <span className="text-gray-400 font-mono text-xs">SentryClips</span>, or{' '}
+            <span className="text-gray-400 font-mono text-xs">RecentClips</span>
+            {' '}→ select a dated folder and drop all clips
           </p>
         </div>
         <label className="mt-4 px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg cursor-pointer transition-colors">

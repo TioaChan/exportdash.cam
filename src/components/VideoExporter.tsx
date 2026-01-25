@@ -4,9 +4,11 @@ import { useState, useRef, useCallback, useEffect } from 'react';
 import { IconDownload, IconPlayerStop, IconLoader2, IconX } from '@tabler/icons-react';
 import { SeiData, SeiWithFrameIndex } from '@/lib/dashcam-mp4';
 import { Muxer, ArrayBufferTarget } from 'mp4-muxer';
+import { VideoSequence } from '@/types/video';
 
 interface VideoExporterProps {
-  videoRef: React.RefObject<HTMLVideoElement | null>;
+  sequence: VideoSequence;
+  selectedAngle: string;
   allSeiMessages: SeiWithFrameIndex[];
   fps: number;
   speedUnit: 'mph' | 'kmh';
@@ -55,7 +57,8 @@ async function loadMapTile(x: number, y: number, zoom: number): Promise<HTMLImag
 }
 
 export function VideoExporter({
-  videoRef,
+  sequence,
+  selectedAngle,
   allSeiMessages,
   fps,
   speedUnit,
@@ -356,12 +359,8 @@ export function VideoExporter({
   };
 
   const startExport = useCallback(async () => {
-    if (!videoRef.current) return;
-
-    const video = videoRef.current;
-
-    if (!video.duration || video.duration === Infinity) {
-      alert('Video not ready');
+    if (!sequence || sequence.moments.length === 0) {
+      alert('No video sequence to export');
       return;
     }
 
@@ -375,10 +374,47 @@ export function VideoExporter({
     setExportUrl(null);
     abortRef.current = false;
 
+    // Create a temporary video element for loading clips
+    const tempVideo = document.createElement('video');
+    tempVideo.muted = true;
+    tempVideo.playsInline = true;
+
+    // Helper to load a video file
+    const loadVideo = (file: File): Promise<void> => {
+      return new Promise((resolve, reject) => {
+        const url = URL.createObjectURL(file);
+        tempVideo.src = url;
+        tempVideo.onloadedmetadata = () => {
+          URL.revokeObjectURL(url);
+          resolve();
+        };
+        tempVideo.onerror = () => {
+          URL.revokeObjectURL(url);
+          reject(new Error(`Failed to load ${file.name}`));
+        };
+      });
+    };
+
+    // Helper to seek video
+    const seekVideo = (time: number): Promise<void> => {
+      return new Promise((resolve) => {
+        const onSeeked = () => {
+          tempVideo.removeEventListener('seeked', onSeeked);
+          resolve();
+        };
+        tempVideo.addEventListener('seeked', onSeeked);
+        tempVideo.currentTime = time;
+      });
+    };
+
     try {
-      // Get video dimensions - scale down if too large
-      const srcWidth = video.videoWidth || 1280;
-      const srcHeight = video.videoHeight || 720;
+      // Get first clip to determine dimensions
+      const firstMoment = sequence.moments[0];
+      const firstVideo = firstMoment.videos.find(v => v.angle === selectedAngle) || firstMoment.videos[0];
+      await loadVideo(firstVideo.file);
+
+      const srcWidth = tempVideo.videoWidth || 1280;
+      const srcHeight = tempVideo.videoHeight || 720;
 
       const maxDimension = 1920;
       let width = srcWidth;
@@ -393,8 +429,8 @@ export function VideoExporter({
       }
 
       const exportFps = 30;
-      const duration = video.duration;
-      const totalFrames = Math.floor(duration * exportFps);
+      const totalDuration = sequence.totalDuration;
+      const totalFrames = Math.floor(totalDuration * exportFps);
 
       const canvas = document.createElement('canvas');
       canvas.width = width;
@@ -462,51 +498,56 @@ export function VideoExporter({
         throw new Error('Video encoder failed to initialize');
       }
 
-      setStatus('Capturing frames...');
-
-      const wasPlaying = !video.paused;
-      video.pause();
-      const originalTime = video.currentTime;
-
-      for (let i = 0; i < totalFrames; i++) {
+      // Process each clip in the sequence
+      let frameCount = 0;
+      for (let clipIdx = 0; clipIdx < sequence.moments.length; clipIdx++) {
         if (abortRef.current || encoderError) break;
 
-        if ((encoder.state as string) === 'closed') {
-          throw new Error('Encoder closed unexpectedly');
+        const moment = sequence.moments[clipIdx];
+        const clipOffset = sequence.momentOffsets[clipIdx];
+        const video = moment.videos.find(v => v.angle === selectedAngle) || moment.videos[0];
+
+        setStatus(`Processing clip ${clipIdx + 1}/${sequence.moments.length}...`);
+
+        // Load this clip
+        await loadVideo(video.file);
+        const clipDuration = tempVideo.duration;
+        const clipFrames = Math.floor(clipDuration * exportFps);
+
+        for (let i = 0; i < clipFrames; i++) {
+          if (abortRef.current || encoderError) break;
+
+          if ((encoder.state as string) === 'closed') {
+            throw new Error('Encoder closed unexpectedly');
+          }
+
+          const localTime = i / exportFps;
+          const absoluteTime = clipOffset + localTime;
+
+          await seekVideo(localTime);
+          await new Promise((r) => setTimeout(r, 10));
+
+          // Draw video frame
+          ctx.drawImage(tempVideo, 0, 0, width, height);
+
+          // Get SEI data for this absolute time
+          const seiData = getSeiForTime(absoluteTime);
+
+          // Draw overlays
+          drawTelemetry(ctx, seiData, width, height);
+          await drawMiniMap(ctx, seiData, width, height);
+
+          const frame = new VideoFrame(canvas, {
+            timestamp: absoluteTime * 1_000_000,
+            duration: (1 / exportFps) * 1_000_000,
+          });
+
+          encoder.encode(frame, { keyFrame: frameCount % 30 === 0 });
+          frame.close();
+
+          frameCount++;
+          setProgress(Math.round((frameCount / totalFrames) * 90));
         }
-
-        const frameTime = i / exportFps;
-        video.currentTime = frameTime;
-
-        await new Promise<void>((resolve) => {
-          const onSeeked = () => {
-            video.removeEventListener('seeked', onSeeked);
-            resolve();
-          };
-          video.addEventListener('seeked', onSeeked);
-        });
-
-        await new Promise((r) => setTimeout(r, 10));
-
-        // Draw video frame
-        ctx.drawImage(video, 0, 0, width, height);
-
-        // Get SEI data for this specific frame time
-        const seiData = getSeiForTime(frameTime);
-
-        // Draw overlays
-        drawTelemetry(ctx, seiData, width, height);
-        await drawMiniMap(ctx, seiData, width, height);
-
-        const frame = new VideoFrame(canvas, {
-          timestamp: frameTime * 1_000_000,
-          duration: (1 / exportFps) * 1_000_000,
-        });
-
-        encoder.encode(frame, { keyFrame: i % 30 === 0 });
-        frame.close();
-
-        setProgress(Math.round(((i + 1) / totalFrames) * 90));
       }
 
       if (encoderError) {
@@ -517,8 +558,6 @@ export function VideoExporter({
         if ((encoder.state as string) !== 'closed') {
           encoder.close();
         }
-        video.currentTime = originalTime;
-        if (wasPlaying) video.play();
         setIsExporting(false);
         return;
       }
@@ -539,16 +578,14 @@ export function VideoExporter({
       setProgress(100);
       setStatus('Complete!');
 
-      video.currentTime = originalTime;
-      if (wasPlaying) video.play();
-
     } catch (err) {
       console.error('Export error:', err);
       setStatus(`Export failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
     } finally {
+      tempVideo.src = '';
       setIsExporting(false);
     }
-  }, [videoRef, allSeiMessages, fps, speedUnit, getSeiForTime]);
+  }, [sequence, selectedAngle, allSeiMessages, fps, speedUnit, getSeiForTime]);
 
   const stopExport = useCallback(() => {
     abortRef.current = true;
