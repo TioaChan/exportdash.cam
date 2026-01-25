@@ -133,7 +133,7 @@ export function DropZone({ onFilesAdded, hasVideos }: DropZoneProps) {
       onDrop={handleDrop}
     >
       {/* Decorative file list preview */}
-      <div className="absolute -right-4 top-1/2 -translate-y-1/2 rotate-3 opacity-[0.15] pointer-events-none select-none">
+      <div className="absolute -right-4 top-1/2 -translate-y-1/2 rotate-3 opacity-40 pointer-events-none select-none">
         <div className="bg-gray-800 rounded-lg p-3 shadow-2xl border border-gray-700 text-left w-72">
           <div className="flex items-center gap-2 mb-2 pb-2 border-b border-gray-700">
             <span className="text-[10px] text-gray-400 font-medium w-full">Name</span>
