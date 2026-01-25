@@ -103,7 +103,7 @@ export default function Home() {
                 <img
                   src="/features/telemetry.png"
                   alt=""
-                  className="absolute -right-4 -top-2 w-24 rotate-6 opacity-100 pointer-events-none"
+                  className="absolute -right-2 top-1 w-28 rotate-6 opacity-100 pointer-events-none rounded-lg shadow-lg"
                 />
                 <div className="relative z-10">
                   <div className="w-10 h-10 rounded-lg bg-yellow-600/20 flex items-center justify-center mb-3">
