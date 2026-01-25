@@ -378,18 +378,21 @@ export function VideoExporter({
     const tempVideo = document.createElement('video');
     tempVideo.muted = true;
     tempVideo.playsInline = true;
+    let currentBlobUrl: string | null = null;
 
     // Helper to load a video file
     const loadVideo = (file: File): Promise<void> => {
       return new Promise((resolve, reject) => {
-        const url = URL.createObjectURL(file);
-        tempVideo.src = url;
+        // Revoke previous URL if any
+        if (currentBlobUrl) {
+          URL.revokeObjectURL(currentBlobUrl);
+        }
+        currentBlobUrl = URL.createObjectURL(file);
+        tempVideo.src = currentBlobUrl;
         tempVideo.onloadedmetadata = () => {
-          URL.revokeObjectURL(url);
           resolve();
         };
         tempVideo.onerror = () => {
-          URL.revokeObjectURL(url);
           reject(new Error(`Failed to load ${file.name}`));
         };
       });
@@ -582,6 +585,10 @@ export function VideoExporter({
       console.error('Export error:', err);
       setStatus(`Export failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
     } finally {
+      // Cleanup
+      if (currentBlobUrl) {
+        URL.revokeObjectURL(currentBlobUrl);
+      }
       tempVideo.src = '';
       setIsExporting(false);
     }
