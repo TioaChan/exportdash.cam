@@ -110,9 +110,20 @@ export function DropZone({ onFilesAdded, hasVideos }: DropZoneProps) {
     );
   }
 
+  // Sample Tesla file names for visual hint
+  const sampleFiles = [
+    '2026-01-24_18-40-57-front.mp4',
+    '2026-01-24_18-41-57-front.mp4',
+    '2026-01-24_18-40-57-back.mp4',
+    '2026-01-24_18-40-57-left_repeater.mp4',
+    '2026-01-24_18-40-57-right_repeater.mp4',
+    '2026-01-24_18-40-57-left_pillar.mp4',
+    '2026-01-24_18-40-57-right_pillar.mp4',
+  ];
+
   return (
     <div
-      className={`border-2 border-dashed rounded-xl p-16 text-center transition-all ${
+      className={`border-2 border-dashed rounded-xl p-12 text-center transition-all relative overflow-hidden ${
         isDragging
           ? 'border-blue-500 bg-blue-500/10 scale-[1.02]'
           : 'border-gray-600 hover:border-gray-500'
@@ -121,7 +132,27 @@ export function DropZone({ onFilesAdded, hasVideos }: DropZoneProps) {
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
     >
-      <div className="flex flex-col items-center gap-4">
+      {/* Decorative file list preview */}
+      <div className="absolute -right-4 top-1/2 -translate-y-1/2 rotate-3 opacity-[0.15] pointer-events-none select-none">
+        <div className="bg-gray-800 rounded-lg p-3 shadow-2xl border border-gray-700 text-left w-72">
+          <div className="flex items-center gap-2 mb-2 pb-2 border-b border-gray-700">
+            <span className="text-[10px] text-gray-400 font-medium w-full">Name</span>
+            <span className="text-[10px] text-gray-400 font-medium w-16 text-right">Size</span>
+          </div>
+          {sampleFiles.map((file, i) => (
+            <div key={i} className="flex items-center gap-2 py-0.5">
+              <svg className="w-3 h-3 text-gray-500 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                <path d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4z" />
+              </svg>
+              <span className="text-[9px] text-gray-300 font-mono truncate">{file}</span>
+              <span className="text-[9px] text-gray-500 w-12 text-right flex-shrink-0">80 MB</span>
+            </div>
+          ))}
+          <div className="text-[9px] text-gray-600 mt-1">...</div>
+        </div>
+      </div>
+
+      <div className="flex flex-col items-center gap-4 relative z-10">
         <div className="w-16 h-16 rounded-full bg-gray-800 flex items-center justify-center">
           <svg
             className="w-8 h-8 text-gray-400"
