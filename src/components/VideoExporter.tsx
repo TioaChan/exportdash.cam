@@ -1,10 +1,11 @@
 'use client';
 
 import { useState, useRef, useCallback, useEffect } from 'react';
-import { IconDownload, IconPlayerStop, IconLoader2, IconX } from '@tabler/icons-react';
+import { IconDownload, IconPlayerStop, IconLoader2, IconCheck } from '@tabler/icons-react';
 import { SeiData, SeiWithFrameIndex } from '@/lib/dashcam-mp4';
 import { Muxer, ArrayBufferTarget } from 'mp4-muxer';
-import { VideoSequence } from '@/types/video';
+import { VideoSequence, TrimPoints, CameraSegment, formatDuration } from '@/types/video';
+import { Tooltip } from './Tooltip';
 
 interface VideoExporterProps {
   sequence: VideoSequence;
@@ -13,10 +14,45 @@ interface VideoExporterProps {
   fps: number;
   speedUnit: 'mph' | 'kmh';
   filename?: string;
+  trimPoints?: TrimPoints | null;
+  cameraSegments?: CameraSegment[];
+  showTelemetry?: boolean;
+  showDateTime?: boolean;
+  showMap?: boolean;
 }
 
 // Map tile cache
 const tileCache = new Map<string, HTMLImageElement>();
+
+// Telemetry icon cache
+interface TelemetryIcons {
+  wheel: HTMLImageElement | null;
+  leftPedal: HTMLImageElement | null;
+  rightPedal: HTMLImageElement | null;
+  blinker: HTMLImageElement | null;
+}
+
+// Load an image with promise
+async function loadImage(src: string): Promise<HTMLImageElement | null> {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => resolve(img);
+    img.onerror = () => resolve(null);
+    img.src = src;
+  });
+}
+
+// Load all telemetry icons
+async function loadTelemetryIcons(): Promise<TelemetryIcons> {
+  const [wheel, leftPedal, rightPedal, blinker] = await Promise.all([
+    loadImage('/wheel.svg'),
+    loadImage('/left-pedal.png'),
+    loadImage('/right-pedal.png'),
+    loadImage('/blinker.svg'),
+  ]);
+  return { wheel, leftPedal, rightPedal, blinker };
+}
 
 // Convert lat/lng to tile coordinates
 function latLngToTile(lat: number, lng: number, zoom: number): { x: number; y: number } {
@@ -63,8 +99,14 @@ export function VideoExporter({
   fps,
   speedUnit,
   filename = 'tesla-cam-export',
+  trimPoints,
+  cameraSegments = [],
+  showTelemetry = true,
+  showDateTime = true,
+  showMap = true,
 }: VideoExporterProps) {
   const [isExporting, setIsExporting] = useState(false);
+  const [isComplete, setIsComplete] = useState(false);
   const [progress, setProgress] = useState(0);
   const [status, setStatus] = useState('');
   const [exportUrl, setExportUrl] = useState<string | null>(null);
@@ -102,8 +144,31 @@ export function VideoExporter({
     [allSeiMessages, fps]
   );
 
+  // Get camera angle for a specific time based on camera segments
+  const getAngleForTime = useCallback(
+    (time: number): string => {
+      if (cameraSegments.length === 0) return selectedAngle;
+
+      for (const segment of cameraSegments) {
+        if (time >= segment.startTime && time < segment.endTime) {
+          return segment.angle;
+        }
+      }
+
+      // Fallback to last segment's angle or selected angle
+      return cameraSegments[cameraSegments.length - 1]?.angle || selectedAngle;
+    },
+    [cameraSegments, selectedAngle]
+  );
+
   // Draw telemetry overlay on canvas - matches TelemetryCard.tsx layout
-  const drawTelemetry = (ctx: CanvasRenderingContext2D, seiData: SeiData | null, width: number, height: number) => {
+  const drawTelemetry = (
+    ctx: CanvasRenderingContext2D,
+    seiData: SeiData | null,
+    width: number,
+    height: number,
+    icons: TelemetryIcons
+  ) => {
     if (!seiData) return;
 
     const scale = Math.min(width / 1280, height / 720);
@@ -134,8 +199,10 @@ export function VideoExporter({
     const topCircleY = y + padding + circleSize / 2;
     const bottomCircleY = y + padding + circleSize + circleGap + circleSize / 2;
     const centerY = y + boxHeight / 2;
+    const iconSize = 16 * scale;
 
     // === Left Column: Gear + Brake ===
+    // Gear circle
     ctx.fillStyle = '#a4a4a4';
     ctx.beginPath();
     ctx.arc(posX + circleSize / 2, topCircleY, circleSize / 2, 0, Math.PI * 2);
@@ -147,24 +214,47 @@ export function VideoExporter({
     ctx.textBaseline = 'middle';
     ctx.fillText(gearLetter, posX + circleSize / 2, topCircleY);
 
-    // Brake circle
+    // Brake circle with pedal icon
     ctx.fillStyle = seiData.brake_applied ? '#ff4444' : '#a4a4a4';
     ctx.beginPath();
     ctx.arc(posX + circleSize / 2, bottomCircleY, circleSize / 2, 0, Math.PI * 2);
     ctx.fill();
-    ctx.fillStyle = '#555';
-    ctx.fillRect(posX + circleSize / 2 - 4 * scale, bottomCircleY - 6 * scale, 8 * scale, 12 * scale);
+    if (icons.leftPedal) {
+      ctx.save();
+      ctx.globalAlpha = 0.6;
+      ctx.drawImage(
+        icons.leftPedal,
+        posX + circleSize / 2 - iconSize / 2,
+        bottomCircleY - iconSize / 2,
+        iconSize,
+        iconSize
+      );
+      ctx.restore();
+    }
 
     posX += columnWidth + gap;
 
     // === Left Blinker ===
-    ctx.fillStyle = seiData.blinker_on_left ? '#22c55e' : 'rgba(100, 100, 100, 0.3)';
-    ctx.beginPath();
-    ctx.moveTo(posX, centerY);
-    ctx.lineTo(posX + blinkerWidth, centerY - 10 * scale);
-    ctx.lineTo(posX + blinkerWidth, centerY + 10 * scale);
-    ctx.closePath();
-    ctx.fill();
+    if (icons.blinker) {
+      ctx.save();
+      ctx.globalAlpha = seiData.blinker_on_left ? 1 : 0.3;
+      ctx.drawImage(
+        icons.blinker,
+        posX,
+        centerY - blinkerWidth / 2,
+        blinkerWidth,
+        blinkerWidth
+      );
+      ctx.restore();
+    } else {
+      ctx.fillStyle = seiData.blinker_on_left ? '#22c55e' : 'rgba(100, 100, 100, 0.3)';
+      ctx.beginPath();
+      ctx.moveTo(posX, centerY);
+      ctx.lineTo(posX + blinkerWidth, centerY - 10 * scale);
+      ctx.lineTo(posX + blinkerWidth, centerY + 10 * scale);
+      ctx.closePath();
+      ctx.fill();
+    }
 
     posX += blinkerWidth + gap;
 
@@ -187,40 +277,64 @@ export function VideoExporter({
 
     posX += speedWidth + gap;
 
-    // === Right Blinker ===
-    ctx.fillStyle = seiData.blinker_on_right ? '#22c55e' : 'rgba(100, 100, 100, 0.3)';
-    ctx.beginPath();
-    ctx.moveTo(posX + blinkerWidth, centerY);
-    ctx.lineTo(posX, centerY - 10 * scale);
-    ctx.lineTo(posX, centerY + 10 * scale);
-    ctx.closePath();
-    ctx.fill();
+    // === Right Blinker (rotated 180°) ===
+    if (icons.blinker) {
+      ctx.save();
+      ctx.globalAlpha = seiData.blinker_on_right ? 1 : 0.3;
+      ctx.translate(posX + blinkerWidth / 2, centerY);
+      ctx.rotate(Math.PI);
+      ctx.drawImage(
+        icons.blinker,
+        -blinkerWidth / 2,
+        -blinkerWidth / 2,
+        blinkerWidth,
+        blinkerWidth
+      );
+      ctx.restore();
+    } else {
+      ctx.fillStyle = seiData.blinker_on_right ? '#22c55e' : 'rgba(100, 100, 100, 0.3)';
+      ctx.beginPath();
+      ctx.moveTo(posX + blinkerWidth, centerY);
+      ctx.lineTo(posX, centerY - 10 * scale);
+      ctx.lineTo(posX, centerY + 10 * scale);
+      ctx.closePath();
+      ctx.fill();
+    }
 
     posX += blinkerWidth + gap;
 
     // === Right Column: Steering + Accelerator ===
+    // Steering circle with wheel icon
     ctx.fillStyle = '#a4a4a4';
     ctx.beginPath();
     ctx.arc(posX + circleSize / 2, topCircleY, circleSize / 2, 0, Math.PI * 2);
     ctx.fill();
 
-    // Steering wheel
     const steeringAngle = seiData.steering_wheel_angle || 0;
-    ctx.save();
-    ctx.translate(posX + circleSize / 2, topCircleY);
-    ctx.rotate((steeringAngle * Math.PI) / 180);
-    ctx.strokeStyle = '#555';
-    ctx.lineWidth = 2 * scale;
-    ctx.beginPath();
-    ctx.arc(0, 0, 8 * scale, 0, Math.PI * 2);
-    ctx.stroke();
-    ctx.beginPath();
-    ctx.moveTo(0, -8 * scale);
-    ctx.lineTo(0, 8 * scale);
-    ctx.stroke();
-    ctx.restore();
+    if (icons.wheel) {
+      ctx.save();
+      ctx.translate(posX + circleSize / 2, topCircleY);
+      ctx.rotate((steeringAngle * Math.PI) / 180);
+      ctx.globalAlpha = 0.5;
+      ctx.drawImage(icons.wheel, -iconSize / 2, -iconSize / 2, iconSize, iconSize);
+      ctx.restore();
+    } else {
+      ctx.save();
+      ctx.translate(posX + circleSize / 2, topCircleY);
+      ctx.rotate((steeringAngle * Math.PI) / 180);
+      ctx.strokeStyle = '#555';
+      ctx.lineWidth = 2 * scale;
+      ctx.beginPath();
+      ctx.arc(0, 0, 8 * scale, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(0, -8 * scale);
+      ctx.lineTo(0, 8 * scale);
+      ctx.stroke();
+      ctx.restore();
+    }
 
-    // Accelerator circle with fill
+    // Accelerator circle with fill and pedal icon
     const rawAccel = seiData.accelerator_pedal_position || 0;
     const accelPercent = Math.min(100, rawAccel > 1 ? rawAccel : rawAccel * 100);
 
@@ -243,8 +357,18 @@ export function VideoExporter({
       ctx.restore();
     }
 
-    ctx.fillStyle = '#555';
-    ctx.fillRect(posX + circleSize / 2 - 4 * scale, bottomCircleY - 6 * scale, 8 * scale, 12 * scale);
+    if (icons.rightPedal) {
+      ctx.save();
+      ctx.globalAlpha = 0.6;
+      ctx.drawImage(
+        icons.rightPedal,
+        posX + circleSize / 2 - iconSize / 2,
+        bottomCircleY - iconSize / 2,
+        iconSize,
+        iconSize
+      );
+      ctx.restore();
+    }
 
     // === Autopilot label ===
     const isAutopilotActive = (seiData.autopilot_state ?? 0) > 0;
@@ -267,6 +391,56 @@ export function VideoExporter({
         ctx.fillText(label, width / 2, labelY + 12 * scale);
       }
     }
+  };
+
+  // Draw date/time overlay
+  const drawDateTime = (
+    ctx: CanvasRenderingContext2D,
+    width: number,
+    height: number,
+    date: string,
+    time: string,
+    telemetryVisible: boolean
+  ) => {
+    const scale = Math.min(width / 1280, height / 720);
+    const padding = 12 * scale;
+
+    // Format the date/time string
+    const dateTimeStr = `${date}  ${time}`;
+
+    ctx.font = `600 ${14 * scale}px -apple-system, BlinkMacSystemFont, sans-serif`;
+    const textWidth = ctx.measureText(dateTimeStr).width;
+    const boxWidth = textWidth + padding * 2;
+    const boxHeight = 28 * scale;
+
+    // Position: if telemetry is visible, position below it; otherwise top center
+    const x = (width - boxWidth) / 2;
+    let y: number;
+
+    if (telemetryVisible) {
+      // Calculate telemetry box height (same logic as in drawTelemetry)
+      const circleSize = 28 * scale;
+      const circleGap = 5 * scale;
+      const telemetryBoxHeight = circleSize * 2 + circleGap + padding * 2;
+      const telemetryY = 12 * scale;
+      // Position just below telemetry with a small gap
+      y = telemetryY + telemetryBoxHeight + 8 * scale;
+    } else {
+      // Position at top center
+      y = 12 * scale;
+    }
+
+    // Draw background
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
+    ctx.beginPath();
+    ctx.roundRect(x, y, boxWidth, boxHeight, 6 * scale);
+    ctx.fill();
+
+    // Draw text
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(dateTimeStr, width / 2, y + boxHeight / 2);
   };
 
   // Draw mini map with actual map tiles
@@ -432,24 +606,34 @@ export function VideoExporter({
       }
 
       const exportFps = 30;
-      const totalDuration = sequence.totalDuration;
-      const totalFrames = Math.floor(totalDuration * exportFps);
+
+      // Calculate export range from trim points
+      const exportStart = trimPoints?.inPoint ?? 0;
+      const exportEnd = trimPoints?.outPoint ?? sequence.totalDuration;
+      const exportDuration = exportEnd - exportStart;
+      const totalFrames = Math.floor(exportDuration * exportFps);
 
       const canvas = document.createElement('canvas');
       canvas.width = width;
       canvas.height = height;
       const ctx = canvas.getContext('2d')!;
 
+      setStatus('Loading telemetry icons...');
+      const telemetryIcons = await loadTelemetryIcons();
+
       setStatus('Pre-loading map tiles...');
 
-      // Pre-load map tiles for all unique positions
+      // Pre-load map tiles for all unique positions within export range
       const uniqueTiles = new Set<string>();
       for (const msg of allSeiMessages) {
-        if (msg.sei.latitude_deg && msg.sei.longitude_deg) {
-          const tile = latLngToTile(msg.sei.latitude_deg, msg.sei.longitude_deg, 17);
-          for (let dx = -1; dx <= 1; dx++) {
-            for (let dy = -1; dy <= 1; dy++) {
-              uniqueTiles.add(`17/${tile.x + dx}/${tile.y + dy}`);
+        const msgTime = msg.frameIndex / fps;
+        if (msgTime >= exportStart && msgTime <= exportEnd) {
+          if (msg.sei.latitude_deg && msg.sei.longitude_deg) {
+            const tile = latLngToTile(msg.sei.latitude_deg, msg.sei.longitude_deg, 17);
+            for (let dx = -1; dx <= 1; dx++) {
+              for (let dy = -1; dy <= 1; dy++) {
+                uniqueTiles.add(`17/${tile.x + dx}/${tile.y + dy}`);
+              }
             }
           }
         }
@@ -501,56 +685,92 @@ export function VideoExporter({
         throw new Error('Video encoder failed to initialize');
       }
 
-      // Process each clip in the sequence
+      // Helper to find clip and local time for an absolute time
+      const findClipForTime = (absTime: number): { clipIdx: number; localTime: number } | null => {
+        for (let i = 0; i < sequence.moments.length; i++) {
+          const clipStart = sequence.momentOffsets[i];
+          const clipEnd = clipStart + sequence.moments[i].duration;
+          if (absTime >= clipStart && absTime < clipEnd) {
+            return { clipIdx: i, localTime: absTime - clipStart };
+          }
+        }
+        // Handle edge case at the very end
+        const lastIdx = sequence.moments.length - 1;
+        const lastStart = sequence.momentOffsets[lastIdx];
+        const lastEnd = lastStart + sequence.moments[lastIdx].duration;
+        if (Math.abs(absTime - lastEnd) < 0.1) {
+          return { clipIdx: lastIdx, localTime: sequence.moments[lastIdx].duration - 0.01 };
+        }
+        return null;
+      };
+
+      // Process frames within export range, respecting camera segments
       let frameCount = 0;
-      for (let clipIdx = 0; clipIdx < sequence.moments.length; clipIdx++) {
+      let currentLoadedClipIdx = -1;
+      let currentLoadedAngle = '';
+
+      for (let frameIdx = 0; frameIdx < totalFrames; frameIdx++) {
         if (abortRef.current || encoderError) break;
 
-        const moment = sequence.moments[clipIdx];
-        const clipOffset = sequence.momentOffsets[clipIdx];
-        const video = moment.videos.find(v => v.angle === selectedAngle) || moment.videos[0];
-
-        setStatus(`Processing clip ${clipIdx + 1}/${sequence.moments.length}...`);
-
-        // Load this clip
-        await loadVideo(video.file);
-        const clipDuration = tempVideo.duration;
-        const clipFrames = Math.floor(clipDuration * exportFps);
-
-        for (let i = 0; i < clipFrames; i++) {
-          if (abortRef.current || encoderError) break;
-
-          if ((encoder.state as string) === 'closed') {
-            throw new Error('Encoder closed unexpectedly');
-          }
-
-          const localTime = i / exportFps;
-          const absoluteTime = clipOffset + localTime;
-
-          await seekVideo(localTime);
-          await new Promise((r) => setTimeout(r, 10));
-
-          // Draw video frame
-          ctx.drawImage(tempVideo, 0, 0, width, height);
-
-          // Get SEI data for this absolute time
-          const seiData = getSeiForTime(absoluteTime);
-
-          // Draw overlays
-          drawTelemetry(ctx, seiData, width, height);
-          await drawMiniMap(ctx, seiData, width, height);
-
-          const frame = new VideoFrame(canvas, {
-            timestamp: absoluteTime * 1_000_000,
-            duration: (1 / exportFps) * 1_000_000,
-          });
-
-          encoder.encode(frame, { keyFrame: frameCount % 30 === 0 });
-          frame.close();
-
-          frameCount++;
-          setProgress(Math.round((frameCount / totalFrames) * 90));
+        if ((encoder.state as string) === 'closed') {
+          throw new Error('Encoder closed unexpectedly');
         }
+
+        const absoluteTime = exportStart + (frameIdx / exportFps);
+
+        // Get the camera angle for this time
+        const frameAngle = getAngleForTime(absoluteTime);
+
+        // Find which clip contains this time
+        const clipInfo = findClipForTime(absoluteTime);
+        if (!clipInfo) continue;
+
+        const { clipIdx, localTime } = clipInfo;
+        const moment = sequence.moments[clipIdx];
+
+        // Check if we need to load a different video
+        const needReload = currentLoadedClipIdx !== clipIdx || currentLoadedAngle !== frameAngle;
+
+        if (needReload) {
+          const video = moment.videos.find(v => v.angle === frameAngle) || moment.videos[0];
+          setStatus(`Processing: ${formatDuration(absoluteTime)} / ${formatDuration(exportEnd)}`);
+          await loadVideo(video.file);
+          currentLoadedClipIdx = clipIdx;
+          currentLoadedAngle = video.angle;
+        }
+
+        await seekVideo(localTime);
+        await new Promise((r) => setTimeout(r, 10));
+
+        // Draw video frame
+        ctx.drawImage(tempVideo, 0, 0, width, height);
+
+        // Get SEI data for this absolute time
+        const seiData = getSeiForTime(absoluteTime);
+
+        // Draw overlays based on toggle states
+        if (showTelemetry) {
+          drawTelemetry(ctx, seiData, width, height, telemetryIcons);
+        }
+        if (showDateTime) {
+          drawDateTime(ctx, width, height, moment.date, moment.time, showTelemetry);
+        }
+        if (showMap) {
+          await drawMiniMap(ctx, seiData, width, height);
+        }
+
+        // Frame timestamp is relative to export start (0-based for exported video)
+        const exportedTime = absoluteTime - exportStart;
+        const frame = new VideoFrame(canvas, {
+          timestamp: exportedTime * 1_000_000,
+          duration: (1 / exportFps) * 1_000_000,
+        });
+
+        encoder.encode(frame, { keyFrame: frameCount % 30 === 0 });
+        frame.close();
+
+        frameCount++;
+        setProgress(Math.round((frameCount / totalFrames) * 90));
       }
 
       if (encoderError) {
@@ -579,23 +799,34 @@ export function VideoExporter({
 
       setExportUrl(url);
       setProgress(100);
-      setStatus('Complete!');
+      setStatus('Export complete!');
+      setIsComplete(true);
+      // Keep isExporting true to show the dialog with download button
 
     } catch (err) {
       console.error('Export error:', err);
       setStatus(`Export failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
+      setIsExporting(false);
     } finally {
       // Cleanup
       if (currentBlobUrl) {
         URL.revokeObjectURL(currentBlobUrl);
       }
       tempVideo.src = '';
-      setIsExporting(false);
     }
-  }, [sequence, selectedAngle, allSeiMessages, fps, speedUnit, getSeiForTime]);
+  }, [sequence, selectedAngle, allSeiMessages, fps, speedUnit, getSeiForTime, getAngleForTime, trimPoints, showTelemetry, showDateTime, showMap]);
 
   const stopExport = useCallback(() => {
     abortRef.current = true;
+    setIsExporting(false);
+    setIsComplete(false);
+  }, []);
+
+  const closeDialog = useCallback(() => {
+    setIsExporting(false);
+    setIsComplete(false);
+    setProgress(0);
+    setStatus('');
   }, []);
 
   const downloadExport = useCallback(() => {
@@ -611,84 +842,99 @@ export function VideoExporter({
 
   return (
     <>
-      <div className="flex items-center gap-2">
-        {!isExporting && !exportUrl && (
-          <button
-            onClick={startExport}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium bg-gray-700 text-gray-300 hover:bg-gray-600 transition-all"
-            title="Export to MP4"
-          >
-            <IconDownload size={16} />
-            <span className="hidden sm:inline">Export</span>
-          </button>
-        )}
+      <Tooltip content="Export to MP4" position="top">
+        <button
+          onClick={startExport}
+          disabled={isExporting}
+          className="flex items-center gap-1 px-2 py-1.5 rounded text-xs font-medium bg-gray-700 text-gray-300 hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+        >
+          <IconDownload size={14} />
+          <span>Export</span>
+        </button>
+      </Tooltip>
 
-        {exportUrl && !isExporting && (
-          <div className="flex items-center gap-2">
-            <button
-              onClick={downloadExport}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium bg-green-600 text-white hover:bg-green-500 transition-all"
-            >
-              <IconDownload size={16} />
-              <span>Download MP4</span>
-            </button>
-            <button
-              onClick={() => setExportUrl(null)}
-              className="p-1.5 rounded-lg bg-gray-700 text-gray-300 hover:bg-gray-600 transition-all"
-              title="Clear"
-            >
-              <IconX size={14} />
-            </button>
-          </div>
-        )}
-      </div>
-
-      {isExporting && (
+      {(isExporting || isComplete) && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm">
           <div className="bg-gray-900 rounded-2xl p-8 max-w-md w-full mx-4 shadow-2xl border border-gray-700">
             <div className="text-center">
+              {/* Icon - spinning loader or success check */}
               <div className="mb-6">
-                <IconLoader2 size={48} className="animate-spin text-blue-500 mx-auto" />
+                {isComplete ? (
+                  <div className="w-16 h-16 rounded-full bg-green-500/20 flex items-center justify-center mx-auto">
+                    <IconCheck size={40} className="text-green-500" />
+                  </div>
+                ) : (
+                  <IconLoader2 size={48} className="animate-spin text-blue-500 mx-auto" />
+                )}
               </div>
 
-              <h3 className="text-xl font-semibold text-white mb-2">Exporting Video</h3>
+              <h3 className="text-xl font-semibold text-white mb-2">
+                {isComplete ? 'Export Complete!' : 'Exporting Video'}
+              </h3>
               <p className="text-gray-400 mb-6">{status}</p>
 
-              <div className="w-full bg-gray-700 rounded-full h-3 mb-4 overflow-hidden">
-                <div
-                  className="bg-blue-500 h-full rounded-full transition-all duration-300 ease-out"
-                  style={{ width: `${progress}%` }}
-                />
+              {/* Progress bar - only show when not complete */}
+              {!isComplete && (
+                <>
+                  <div className="w-full bg-gray-700 rounded-full h-3 mb-4 overflow-hidden">
+                    <div
+                      className="bg-blue-500 h-full rounded-full transition-all duration-300 ease-out"
+                      style={{ width: `${progress}%` }}
+                    />
+                  </div>
+                  <p className="text-2xl font-bold text-white mb-6">{Math.round(progress)}%</p>
+                </>
+              )}
+
+              {/* Action buttons */}
+              <div className="flex flex-col gap-3">
+                {isComplete ? (
+                  <>
+                    <button
+                      onClick={downloadExport}
+                      className="flex items-center gap-2 justify-center w-full px-6 py-3 rounded-lg text-sm font-medium bg-green-600 text-white hover:bg-green-500 transition-all"
+                    >
+                      <IconDownload size={18} />
+                      Download MP4
+                    </button>
+                    <button
+                      onClick={closeDialog}
+                      className="px-6 py-2.5 rounded-lg text-sm font-medium bg-gray-700 text-gray-300 hover:bg-gray-600 transition-all"
+                    >
+                      Close
+                    </button>
+                  </>
+                ) : (
+                  <button
+                    onClick={stopExport}
+                    className="flex items-center gap-2 mx-auto px-6 py-2.5 rounded-lg text-sm font-medium bg-red-600 text-white hover:bg-red-500 transition-all"
+                  >
+                    <IconPlayerStop size={18} />
+                    Cancel Export
+                  </button>
+                )}
               </div>
 
-              <p className="text-2xl font-bold text-white mb-6">{Math.round(progress)}%</p>
-
-              <button
-                onClick={stopExport}
-                className="flex items-center gap-2 mx-auto px-6 py-2.5 rounded-lg text-sm font-medium bg-red-600 text-white hover:bg-red-500 transition-all"
-              >
-                <IconPlayerStop size={18} />
-                Cancel Export
-              </button>
-
-              {/* CTA */}
-              <a
-                href="https://nobig.deals"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="mt-6 flex items-center gap-3 p-3 rounded-xl bg-gray-800/50 border border-gray-700 hover:border-gray-600 hover:bg-gray-800 transition-all"
-              >
-                <svg className="w-8 h-8 flex-shrink-0" viewBox="0 0 84 88" fill="none">
-                  <path d="M33.241 68.7528C32.255 68.051 31.1554 67.5977 29.9415 67.3912C30.7378 67.129 31.4931 66.8013 32.2071 66.4057C33.6242 65.6425 34.7347 64.5737 35.5391 63.2C36.3816 61.8258 36.8029 60.1845 36.8029 58.2762C36.8029 56.3679 36.3054 54.5359 35.3096 53.0094C34.3134 51.4445 32.8392 50.2231 30.8862 49.3455C28.9712 48.4295 26.5965 47.9717 23.7628 47.9717H0V87.9315H24.5097C27.2671 87.9315 29.6224 87.4738 31.5754 86.5574C33.567 85.6414 35.0797 84.363 36.1136 82.7217C37.1861 81.0809 37.7225 79.2105 37.7225 77.1115C37.7225 75.3938 37.3203 73.81 36.5159 72.3594C35.7114 70.8709 34.6196 69.6688 33.241 68.7528ZM4.75917 54.4361H8.11589V54.4409L22.6134 54.4409C24.4898 54.4409 25.945 54.8802 26.9789 55.7577C28.0513 56.6358 28.5877 57.8758 28.5877 59.4791C28.5877 61.0823 28.0513 62.3608 26.9789 63.2004C25.945 64.04 24.4898 64.4598 22.6134 64.4598L8.04169 64.4598V59.4758C8.04169 59.0261 7.9983 58.5768 7.90019 58.1376C7.57785 56.6935 6.77222 55.6624 4.75876 55.6624L4.75917 54.4361ZM27.8984 80.0311C26.8264 80.9471 25.3133 81.4049 23.3602 81.4049H8.04169V75.6844C8.04169 75.2346 7.9983 74.7857 7.90059 74.3465C7.57826 72.9025 6.77222 71.8709 4.75917 71.8709V70.645H8.04169V70.6418L23.1879 70.6418C25.141 70.6418 26.6922 71.1384 27.8408 72.1307C28.9899 73.0847 29.5644 74.4205 29.5644 76.1381C29.5644 77.8557 29.0093 79.1152 27.8984 80.0311Z" fill="#EEE9E8"/>
-                  <path d="M73.724 2.54189C70.6632 0.847296 67.2141 0 63.3757 0C59.5373 0 56.1372 0.847296 53.0278 2.54189C49.9184 4.23648 47.4411 6.63291 45.5947 9.73158C43.7973 12.7818 42.8984 16.4126 42.8984 20.6248C42.8984 24.837 43.773 28.4436 45.5217 31.5908C47.3191 34.689 49.7242 37.0859 52.7363 38.7804C55.7966 40.475 59.2218 41.3223 63.0112 41.3223C66.8005 41.3223 70.347 40.475 73.505 38.7804C76.6631 37.0859 79.1647 34.6894 81.0111 31.5908C82.9058 28.444 83.8533 24.7886 83.8533 20.6248C83.8533 16.4611 82.9301 12.7818 81.0841 9.73158C79.2867 6.63291 76.8334 4.23648 73.7244 2.54189H73.724ZM73.5054 28.1769C72.3398 30.162 70.8092 31.6627 68.9145 32.6793C67.0681 33.6474 65.1005 34.1314 63.0116 34.1314C60.9227 34.1314 58.9794 33.6474 57.182 32.6793C55.4329 31.6627 54.024 30.1616 52.9552 28.1769C51.8865 26.1433 51.3521 23.6261 51.3521 20.6244C51.3521 17.6227 51.9108 15.057 53.0282 13.0719C54.1456 11.0868 55.6028 9.61036 57.4006 8.64185C59.1979 7.67374 61.1417 7.18929 63.2305 7.18929C65.3194 7.18929 67.2627 7.67334 69.0601 8.64185C70.9065 9.60996 72.4123 11.0868 73.5784 13.0719C74.7441 15.057 75.3275 17.5742 75.3275 20.6244C75.3275 23.6746 74.7202 26.1437 73.5054 28.1769Z" fill="#EEE9E8"/>
-                  <path d="M28.6122 2.07802C26.143 0.775354 23.3349 0.124023 20.1882 0.124023C18.5088 0.124023 16.9012 0.353929 15.3657 0.812931C12.7291 1.7269 10.3029 3.1839 9.5374 5.76014H8.28658V5.33265C8.28415 5.33588 8.28172 5.33871 8.27888 5.34194V0.775354H0V40.6508H8.27847V18.3613C8.27847 15.9006 8.69001 13.8505 9.51307 12.21C10.3844 10.5696 11.5707 9.33922 13.0713 8.519C14.5723 7.69877 16.3392 7.28866 18.3726 7.28866C21.3741 7.28866 23.7946 8.2297 25.6342 10.111C27.4737 11.9441 28.3941 14.6945 28.3941 18.3609V40.6504H36.6V17.1309C36.6 13.4161 35.8734 10.3041 34.4211 7.79534C33.017 5.23851 31.0806 3.3326 28.6118 2.07802H28.6122Z" fill="#EEE9E8"/>
-                  <path d="M73.9775 50.4019C70.8288 48.7562 67.1035 47.9336 62.8025 47.9336H46.1484V88.0001H62.8025C67.1035 88.0001 70.8283 87.1779 73.9775 85.5322C77.1643 83.8865 79.6222 81.5713 81.3502 78.5865C83.1167 75.6018 83.9998 72.0809 83.9998 68.0246C83.9998 63.9684 83.1167 60.4285 81.3502 57.4054C79.6222 54.3823 77.1647 52.0472 73.9775 50.4019ZM72.3066 77.7255C70.041 80.0217 66.7771 81.1697 62.5146 81.1697H54.2124V59.7658C54.2124 59.3149 54.1691 58.8644 54.0705 58.4244C53.747 56.9767 52.9389 55.9427 50.921 55.9427V54.7136H54.2124V54.7075H62.5146C66.7771 54.7075 70.041 55.8938 72.3066 58.2664C74.6108 60.639 75.7631 63.892 75.7631 68.0251C75.7631 72.1581 74.6108 75.3909 72.3066 77.7255Z" fill="#EEE9E8"/>
-                </svg>
-                <div className="text-left">
-                  <p className="text-xs text-gray-400">Got an idea? Looking for an AI-native team?</p>
-                  <p className="text-sm text-gray-300 font-medium">we are nobig.deals ready to help you →</p>
-                </div>
-              </a>
+              {/* CTA - only show during export, not on success */}
+              {!isComplete && (
+                <a
+                  href="https://nobig.deals"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="mt-6 flex items-center gap-3 p-3 rounded-xl bg-gray-800/50 border border-gray-700 hover:border-gray-600 hover:bg-gray-800 transition-all"
+                >
+                  <svg className="w-8 h-8 flex-shrink-0" viewBox="0 0 84 88" fill="none">
+                    <path d="M33.241 68.7528C32.255 68.051 31.1554 67.5977 29.9415 67.3912C30.7378 67.129 31.4931 66.8013 32.2071 66.4057C33.6242 65.6425 34.7347 64.5737 35.5391 63.2C36.3816 61.8258 36.8029 60.1845 36.8029 58.2762C36.8029 56.3679 36.3054 54.5359 35.3096 53.0094C34.3134 51.4445 32.8392 50.2231 30.8862 49.3455C28.9712 48.4295 26.5965 47.9717 23.7628 47.9717H0V87.9315H24.5097C27.2671 87.9315 29.6224 87.4738 31.5754 86.5574C33.567 85.6414 35.0797 84.363 36.1136 82.7217C37.1861 81.0809 37.7225 79.2105 37.7225 77.1115C37.7225 75.3938 37.3203 73.81 36.5159 72.3594C35.7114 70.8709 34.6196 69.6688 33.241 68.7528ZM4.75917 54.4361H8.11589V54.4409L22.6134 54.4409C24.4898 54.4409 25.945 54.8802 26.9789 55.7577C28.0513 56.6358 28.5877 57.8758 28.5877 59.4791C28.5877 61.0823 28.0513 62.3608 26.9789 63.2004C25.945 64.04 24.4898 64.4598 22.6134 64.4598L8.04169 64.4598V59.4758C8.04169 59.0261 7.9983 58.5768 7.90019 58.1376C7.57785 56.6935 6.77222 55.6624 4.75876 55.6624L4.75917 54.4361ZM27.8984 80.0311C26.8264 80.9471 25.3133 81.4049 23.3602 81.4049H8.04169V75.6844C8.04169 75.2346 7.9983 74.7857 7.90059 74.3465C7.57826 72.9025 6.77222 71.8709 4.75917 71.8709V70.645H8.04169V70.6418L23.1879 70.6418C25.141 70.6418 26.6922 71.1384 27.8408 72.1307C28.9899 73.0847 29.5644 74.4205 29.5644 76.1381C29.5644 77.8557 29.0093 79.1152 27.8984 80.0311Z" fill="#EEE9E8"/>
+                    <path d="M73.724 2.54189C70.6632 0.847296 67.2141 0 63.3757 0C59.5373 0 56.1372 0.847296 53.0278 2.54189C49.9184 4.23648 47.4411 6.63291 45.5947 9.73158C43.7973 12.7818 42.8984 16.4126 42.8984 20.6248C42.8984 24.837 43.773 28.4436 45.5217 31.5908C47.3191 34.689 49.7242 37.0859 52.7363 38.7804C55.7966 40.475 59.2218 41.3223 63.0112 41.3223C66.8005 41.3223 70.347 40.475 73.505 38.7804C76.6631 37.0859 79.1647 34.6894 81.0111 31.5908C82.9058 28.444 83.8533 24.7886 83.8533 20.6248C83.8533 16.4611 82.9301 12.7818 81.0841 9.73158C79.2867 6.63291 76.8334 4.23648 73.7244 2.54189H73.724ZM73.5054 28.1769C72.3398 30.162 70.8092 31.6627 68.9145 32.6793C67.0681 33.6474 65.1005 34.1314 63.0116 34.1314C60.9227 34.1314 58.9794 33.6474 57.182 32.6793C55.4329 31.6627 54.024 30.1616 52.9552 28.1769C51.8865 26.1433 51.3521 23.6261 51.3521 20.6244C51.3521 17.6227 51.9108 15.057 53.0282 13.0719C54.1456 11.0868 55.6028 9.61036 57.4006 8.64185C59.1979 7.67374 61.1417 7.18929 63.2305 7.18929C65.3194 7.18929 67.2627 7.67334 69.0601 8.64185C70.9065 9.60996 72.4123 11.0868 73.5784 13.0719C74.7441 15.057 75.3275 17.5742 75.3275 20.6244C75.3275 23.6746 74.7202 26.1437 73.5054 28.1769Z" fill="#EEE9E8"/>
+                    <path d="M28.6122 2.07802C26.143 0.775354 23.3349 0.124023 20.1882 0.124023C18.5088 0.124023 16.9012 0.353929 15.3657 0.812931C12.7291 1.7269 10.3029 3.1839 9.5374 5.76014H8.28658V5.33265C8.28415 5.33588 8.28172 5.33871 8.27888 5.34194V0.775354H0V40.6508H8.27847V18.3613C8.27847 15.9006 8.69001 13.8505 9.51307 12.21C10.3844 10.5696 11.5707 9.33922 13.0713 8.519C14.5723 7.69877 16.3392 7.28866 18.3726 7.28866C21.3741 7.28866 23.7946 8.2297 25.6342 10.111C27.4737 11.9441 28.3941 14.6945 28.3941 18.3609V40.6504H36.6V17.1309C36.6 13.4161 35.8734 10.3041 34.4211 7.79534C33.017 5.23851 31.0806 3.3326 28.6118 2.07802H28.6122Z" fill="#EEE9E8"/>
+                    <path d="M73.9775 50.4019C70.8288 48.7562 67.1035 47.9336 62.8025 47.9336H46.1484V88.0001H62.8025C67.1035 88.0001 70.8283 87.1779 73.9775 85.5322C77.1643 83.8865 79.6222 81.5713 81.3502 78.5865C83.1167 75.6018 83.9998 72.0809 83.9998 68.0246C83.9998 63.9684 83.1167 60.4285 81.3502 57.4054C79.6222 54.3823 77.1647 52.0472 73.9775 50.4019ZM72.3066 77.7255C70.041 80.0217 66.7771 81.1697 62.5146 81.1697H54.2124V59.7658C54.2124 59.3149 54.1691 58.8644 54.0705 58.4244C53.747 56.9767 52.9389 55.9427 50.921 55.9427V54.7136H54.2124V54.7075H62.5146C66.7771 54.7075 70.041 55.8938 72.3066 58.2664C74.6108 60.639 75.7631 63.892 75.7631 68.0251C75.7631 72.1581 74.6108 75.3909 72.3066 77.7255Z" fill="#EEE9E8"/>
+                  </svg>
+                  <div className="text-left">
+                    <p className="text-xs text-gray-400">Got an idea? Looking for an AI-native team?</p>
+                    <p className="text-sm text-gray-300 font-medium">we are nobig.deals ready to help you →</p>
+                  </div>
+                </a>
+              )}
             </div>
           </div>
         </div>

@@ -178,6 +178,42 @@ export default function Home() {
                 </div>
               </div>
 
+              {/* Video Editor */}
+              <div className="bg-gray-900/50 rounded-xl p-5 border border-gray-800 relative overflow-hidden">
+                <img
+                  src="/features/trim.png"
+                  alt=""
+                  className="absolute -right-2 top-1 w-28 rotate-6 opacity-100 pointer-events-none rounded-lg shadow-lg"
+                />
+                <div className="relative z-10">
+                  <div className="w-10 h-10 rounded-lg bg-yellow-600/20 flex items-center justify-center mb-3">
+                    <svg className="w-5 h-5 text-yellow-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.121 14.121L19 19m-7-7l7-7m-7 7l-2.879 2.879M12 12L9.121 9.121m0 5.758a3 3 0 10-4.243 4.243 3 3 0 004.243-4.243zm0-5.758a3 3 0 10-4.243-4.243 3 3 0 004.243 4.243z" />
+                    </svg>
+                  </div>
+                  <h3 className="font-semibold mb-1">Video Editor</h3>
+                  <p className="text-sm text-gray-500">Trim with in/out points and switch cameras at any time</p>
+                </div>
+              </div>
+
+              {/* Camera Track */}
+              <div className="bg-gray-900/50 rounded-xl p-5 border border-gray-800 relative overflow-hidden">
+                <img
+                  src="/features/camera-track.png"
+                  alt=""
+                  className="absolute -right-4 -top-1 w-32 rotate-6 opacity-100 pointer-events-none rounded-lg shadow-lg"
+                />
+                <div className="relative z-10">
+                  <div className="w-10 h-10 rounded-lg bg-purple-600/20 flex items-center justify-center mb-3">
+                    <svg className="w-5 h-5 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                    </svg>
+                  </div>
+                  <h3 className="font-semibold mb-1">Camera Track</h3>
+                  <p className="text-sm text-gray-500">Define which camera to show at each moment in the timeline</p>
+                </div>
+              </div>
+
               {/* Video Export */}
               <div className="bg-gray-900/50 rounded-xl p-5 border border-gray-800">
                 <div className="w-10 h-10 rounded-lg bg-red-600/20 flex items-center justify-center mb-3">
@@ -186,46 +222,24 @@ export default function Home() {
                   </svg>
                 </div>
                 <h3 className="font-semibold mb-1">Video Export</h3>
-                <p className="text-sm text-gray-500">Export clips with telemetry overlay burned in</p>
+                <p className="text-sm text-gray-500">Export trimmed clips with overlays and camera switches</p>
               </div>
 
-              {/* Keyboard Shortcuts */}
-              <div className="bg-gray-900/50 rounded-xl p-5 border border-gray-800">
-                <div className="w-10 h-10 rounded-lg bg-cyan-600/20 flex items-center justify-center mb-3">
-                  <svg className="w-5 h-5 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" />
-                  </svg>
-                </div>
-                <h3 className="font-semibold mb-1">Keyboard Shortcuts</h3>
-                <p className="text-sm text-gray-500">Space, arrows, 1-4 for layouts, T/M for overlays</p>
-              </div>
-
-              {/* Open Source */}
-              <div className="bg-gray-900/50 rounded-xl p-5 border border-gray-800">
-                <div className="w-10 h-10 rounded-lg bg-pink-600/20 flex items-center justify-center mb-3">
-                  <svg className="w-5 h-5 text-pink-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
-                  </svg>
-                </div>
-                <h3 className="font-semibold mb-1">Open Source</h3>
-                <p className="text-sm text-gray-500">
-                  MIT licensed.{' '}
-                  <a
-                    href="https://github.com/nobig-deals/exportdash.cam"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-gray-400 hover:text-gray-300 underline underline-offset-2"
-                  >
-                    View and contribute on GitHub
-                  </a>
-                </p>
-              </div>
             </div>
 
             {/* Credits */}
             <div className="mt-16 pt-8 border-t border-gray-800 text-center">
               <p className="text-xs text-gray-600">
-                100% built with{' '}
+                MIT licensed ·{' '}
+                <a
+                  href="https://github.com/nicekid1/exportdash.cam"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-gray-500 hover:text-gray-400 underline underline-offset-2"
+                >
+                  Open Source on GitHub
+                </a>
+                {' '}· 100% built with{' '}
                 <a
                   href="https://claude.ai/code"
                   target="_blank"
@@ -237,7 +251,9 @@ export default function Home() {
                   </svg>
                   Claude Code
                 </a>
-                {' '}· Uses{' '}
+              </p>
+              <p className="mt-2 text-xs text-gray-600">
+                Uses{' '}
                 <a
                   href="https://github.com/teslamotors/dashcam"
                   target="_blank"
@@ -255,16 +271,6 @@ export default function Home() {
                 >
                   ViewDash.cam
                 </a>
-                {' '}(
-                <a
-                  href="https://github.com/pixeye33/viewdashcam"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-gray-500 hover:text-gray-400 underline underline-offset-2"
-                >
-                  source
-                </a>
-                )
               </p>
 
               {/* CTA */}
