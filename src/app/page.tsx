@@ -199,25 +199,19 @@ export default function Home() {
             </div>
 
             {/* Credits */}
-            <div className="mt-16 pt-8 border-t border-gray-800 text-center space-y-4">
-              {/* Built with Claude Code */}
-              <div className="flex items-center justify-center gap-2">
-                <span className="text-xs text-gray-500">100% built with</span>
+            <div className="mt-16 pt-8 border-t border-gray-800 text-center">
+              <p className="text-xs text-gray-600">
+                100% built with{' '}
                 <a
                   href="https://claude.ai/code"
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="flex items-center gap-1.5 text-xs text-gray-400 hover:text-gray-300 transition-colors"
+                  className="text-gray-500 hover:text-gray-400 inline-flex items-center gap-1"
                 >
-                  <svg className="w-4 h-4" viewBox="0 0 46 32" fill="currentColor">
-                    <path d="M32.73 0h-6.945L38.45 32h6.945L32.73 0ZM13.27 0 0 32h7.082l2.59-6.5h13.15l2.59 6.5h7.082L19.227 0h-5.958Zm-.705 19.64 4.678-11.75 4.678 11.75H12.565Z"/>
-                  </svg>
+                  <img src="https://claude.ai/favicon.svg" alt="Claude" className="w-3.5 h-3.5 inline" />
                   Claude Code
                 </a>
-              </div>
-
-              <p className="text-xs text-gray-600">
-                Built with{' '}
+                {' '}· Uses{' '}
                 <a
                   href="https://github.com/teslamotors/dashcam"
                   target="_blank"
