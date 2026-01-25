@@ -95,7 +95,7 @@ export default function Home() {
                   </svg>
                 </div>
                 <h3 className="font-semibold mb-1">Seamless Playback</h3>
-                <p className="text-sm text-gray-500">Consecutive 1-minute clips merged into continuous video</p>
+                <p className="text-sm text-gray-500">Consecutive clips merged into continuous video</p>
               </div>
 
               {/* Live Telemetry */}
