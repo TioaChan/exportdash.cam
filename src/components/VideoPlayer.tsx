@@ -3,7 +3,7 @@
 import { useRef, useEffect, useState, useCallback, lazy, Suspense, ReactNode, useMemo } from 'react';
 import { useSeiData } from '@/hooks/useSeiData';
 import { TelemetryCard } from './TelemetryCard';
-import { VideoSequence, ANGLE_LABELS, ANGLE_ORDER, VideoMoment } from '@/types/video';
+import { VideoSequence, ANGLE_LABELS, ANGLE_ORDER, VideoMoment, TrimPoints, CameraSegment } from '@/types/video';
 import { findMomentForTime, toAbsoluteTime } from '@/lib/sequence-detector';
 import {
   IconArrowUp,
@@ -31,9 +31,13 @@ import {
   IconTrash,
   IconChevronDown,
   IconCheck,
+  IconScissors,
+  IconWand,
+  IconClock,
 } from '@tabler/icons-react';
 import { VideoExporter } from './VideoExporter';
 import { TelemetryTimeline } from './TelemetryTimeline';
+import { Tooltip } from './Tooltip';
 
 // Lazy load MapView to avoid SSR issues with Leaflet
 const MapView = lazy(() => import('./MapView').then(mod => ({ default: mod.MapView })));
@@ -114,8 +118,21 @@ export function VideoPlayer({
   const [playbackRate, setPlaybackRate] = useState(1);
   const [showMap, setShowMap] = useState(true);
   const [showTelemetry, setShowTelemetry] = useState(true);
+  const [showDateTime, setShowDateTime] = useState(true);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [isTimelineDragging, setIsTimelineDragging] = useState(false);
+
+  // Edit mode state
+  const [isEditMode, setIsEditMode] = useState(false);
+  const [isTrimming, setIsTrimming] = useState(false); // When true, show full timeline for trim adjustment
+  const [trimPoints, setTrimPoints] = useState<TrimPoints | null>(null);
+  const [cameraSegments, setCameraSegments] = useState<CameraSegment[]>([]);
+  const [useCustomCameraTrack, setUseCustomCameraTrack] = useState(false);
+
+  // Check if camera track has been customized (more than one segment)
+  const hasCustomCameraTrack = useMemo(() => {
+    return cameraSegments.length > 1;
+  }, [cameraSegments]);
 
   // Video URL management
   const [videoUrls, setVideoUrls] = useState<Record<string, string>>({});
@@ -151,9 +168,24 @@ export function VideoPlayer({
       // Auto-select first available angle (prefer front)
       const firstMoment = sequence.moments[0];
       const frontVideo = firstMoment.videos.find(v => v.angle === 'front');
-      setSelectedAngle(frontVideo?.angle || firstMoment.videos[0]?.angle || 'front');
+      const defaultAngle = frontVideo?.angle || firstMoment.videos[0]?.angle || 'front';
+      setSelectedAngle(defaultAngle);
+
+      // Reset edit mode state
+      setIsEditMode(false);
+      setIsTrimming(false);
+      setTrimPoints({ inPoint: 0, outPoint: sequence.totalDuration });
+      setCameraSegments([{ startTime: 0, endTime: sequence.totalDuration, angle: defaultAngle }]);
+      setUseCustomCameraTrack(false);
     }
   }, [sequence?.id]);
+
+  // Auto-enable custom camera track when user adds segments
+  useEffect(() => {
+    if (hasCustomCameraTrack && !useCustomCameraTrack) {
+      setUseCustomCameraTrack(true);
+    }
+  }, [hasCustomCameraTrack, useCustomCameraTrack]);
 
   // Create object URLs for current moment's videos
   useEffect(() => {
@@ -266,6 +298,22 @@ export function VideoPlayer({
     }
   }, [currentMomentIndex]);
 
+  // Switch cameras based on camera segments (when custom track enabled)
+  // Works both during playback AND when scrubbing timeline
+  useEffect(() => {
+    if (!useCustomCameraTrack || cameraSegments.length === 0) return;
+
+    // Find which segment the current time falls into
+    const currentSegment = cameraSegments.find(
+      seg => absoluteTime >= seg.startTime && absoluteTime < seg.endTime
+    );
+
+    if (currentSegment && currentSegment.angle !== selectedAngle) {
+      // Switch to the segment's angle
+      setSelectedAngle(currentSegment.angle);
+    }
+  }, [useCustomCameraTrack, absoluteTime, cameraSegments, selectedAngle]);
+
   // Custom setters that preserve playback state
   const handleLayoutChange = useCallback((newLayout: LayoutType) => {
     if (newLayout === layout) return;
@@ -303,20 +351,26 @@ export function VideoPlayer({
     return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
   }, []);
 
-  // Close sequence menu when clicking outside
-  useEffect(() => {
-    if (!showSequenceMenu) return;
+  // Toggle trim mode (scissors button) - enters edit mode if needed
+  const toggleTrimMode = useCallback(() => {
+    if (!isEditMode) {
+      // Not in edit mode - enter edit mode AND start trimming
+      setIsEditMode(true);
+      setIsTrimming(true);
+    } else if (isTrimming) {
+      // Already trimming - exit edit mode entirely
+      setIsEditMode(false);
+      setIsTrimming(false);
+    } else {
+      // In edit mode but not trimming (on camera track) - start trimming
+      setIsTrimming(true);
+    }
+  }, [isEditMode, isTrimming]);
 
-    const handleClickOutside = (e: MouseEvent) => {
-      const target = e.target as HTMLElement;
-      if (!target.closest('[data-sequence-menu]')) {
-        setShowSequenceMenu(false);
-      }
-    };
-
-    document.addEventListener('click', handleClickOutside);
-    return () => document.removeEventListener('click', handleClickOutside);
-  }, [showSequenceMenu]);
+  // Handle trim point changes
+  const handleTrimChange = useCallback((newTrimPoints: TrimPoints) => {
+    setTrimPoints(newTrimPoints);
+  }, []);
 
   const togglePlay = useCallback(() => {
     if (mainVideoRef.current) {
@@ -356,6 +410,13 @@ export function VideoPlayer({
 
   const handleTimelineSeek = useCallback((time: number) => {
     seekToAbsoluteTime(time);
+  }, [seekToAbsoluteTime]);
+
+  // Handle trim preview - seek video while dragging trim handles
+  const handleTrimPreview = useCallback((previewTime: number | null) => {
+    if (previewTime !== null) {
+      seekToAbsoluteTime(previewTime);
+    }
   }, [seekToAbsoluteTime]);
 
   const handlePlaybackRateChange = useCallback((rate: number) => {
@@ -437,6 +498,9 @@ export function VideoPlayer({
         case 't':
           setShowTelemetry(prev => !prev);
           break;
+        case 'd':
+          setShowDateTime(prev => !prev);
+          break;
         case 'f':
           toggleFullscreen();
           break;
@@ -446,12 +510,15 @@ export function VideoPlayer({
         case ']':
           skipToNextClip();
           break;
+        case 'e':
+          toggleTrimMode();
+          break;
       }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [togglePlay, absoluteTime, sequence, seekToAbsoluteTime, handleLayoutChange, toggleFullscreen, skipToPreviousClip, skipToNextClip]);
+  }, [togglePlay, absoluteTime, sequence, seekToAbsoluteTime, handleLayoutChange, toggleFullscreen, skipToPreviousClip, skipToNextClip, toggleTrimMode]);
 
   if (!sequence || !currentMoment || Object.keys(videoUrls).length === 0) {
     return (
@@ -529,7 +596,7 @@ export function VideoPlayer({
     // Single view - just one camera
     if (layout === 'single') {
       return (
-        <div className="relative aspect-video bg-black flex items-center justify-center">
+        <div className="relative w-full bg-black flex items-center justify-center aspect-video max-h-full">
           <div className="w-full h-full">
             {renderVideo(selectedAngle, true, 'w-full h-full')}
           </div>
@@ -554,7 +621,7 @@ export function VideoPlayer({
       );
 
       return (
-        <div className="relative aspect-video bg-black flex items-center justify-center">
+        <div className="relative w-full bg-black flex items-center justify-center aspect-video max-h-full">
           <div className="w-full h-full">
             {renderVideo(selectedAngle, true, 'w-full h-full')}
           </div>
@@ -595,7 +662,7 @@ export function VideoPlayer({
       const tripleAngles = ['left_repeater', 'front', 'right_repeater'];
 
       return (
-        <div className="relative aspect-video bg-black flex items-center justify-center overflow-hidden">
+        <div className="relative w-full bg-black flex items-center justify-center overflow-hidden aspect-video max-h-full">
           <div className="flex gap-1 h-full p-1 items-center justify-center">
             {tripleAngles.map((angle) => {
               const isMain = angle === selectedAngle;
@@ -627,7 +694,7 @@ export function VideoPlayer({
       ];
 
       return (
-        <div className="relative aspect-video bg-black flex items-center justify-center overflow-hidden">
+        <div className="relative w-full bg-black flex items-center justify-center overflow-hidden aspect-video max-h-full">
           <div className="absolute inset-0 flex flex-col gap-1 p-1">
             {rows.map((row, rowIdx) => (
               <div key={rowIdx} className="flex-1 flex gap-1 min-h-0">
@@ -661,12 +728,18 @@ export function VideoPlayer({
   return (
     <div
       ref={containerRef}
-      className={`space-y-2 ${isFullscreen ? 'fixed inset-0 z-50 bg-black p-4 flex flex-col' : ''}`}
+      className={`flex flex-col gap-2 ${
+        isFullscreen
+          ? 'fixed inset-0 z-50 bg-black p-4'
+          : 'max-w-[1800px] mx-auto h-[calc(100vh-2rem)]'
+      }`}
     >
       {/* Video Container with Overlays */}
       <div
         ref={videoContainerRef}
-        className={`relative bg-black rounded-xl overflow-hidden ${isFullscreen ? 'flex-1' : ''}`}
+        className={`relative bg-black rounded-xl overflow-hidden ${
+          isFullscreen ? 'flex-1' : 'max-h-[60vh]'
+        }`}
       >
         {renderVideoGrid()}
 
@@ -680,6 +753,17 @@ export function VideoPlayer({
               speedUnit={speedUnit}
               onSpeedUnitToggle={() => setSpeedUnit(prev => prev === 'mph' ? 'kmh' : 'mph')}
             />
+          </div>
+        )}
+
+        {/* Date/Time Overlay - Below Telemetry or Top Center */}
+        {showDateTime && (
+          <div className={`absolute left-1/2 -translate-x-1/2 z-20 ${
+            showTelemetry ? 'top-[95px]' : 'top-3'
+          }`}>
+            <div className="px-2 py-1 rounded-md bg-black/50 backdrop-blur-sm text-white/90 text-xs font-medium">
+              {currentMoment.date} &nbsp; {currentMoment.time}
+            </div>
           </div>
         )}
 
@@ -699,83 +783,102 @@ export function VideoPlayer({
         )}
       </div>
 
-      {/* Playback Controls - Under Video */}
-      <div className="bg-gray-800/50 rounded-xl px-4 py-3">
+      {/* Controls Area - Scrollable if needed */}
+      <div className={`flex-1 overflow-y-auto space-y-2 min-h-0 ${isFullscreen ? '' : ''}`}>
+        {/* Playback Controls - Under Video */}
+        <div className="bg-gray-800/50 rounded-xl px-4 py-3">
         <div className="flex items-center gap-2">
           {/* Skip to Previous Clip */}
           {sequence.clipCount > 1 && (
-            <button
-              onClick={skipToPreviousClip}
-              disabled={currentMomentIndex === 0}
-              className={`w-8 h-8 flex-shrink-0 flex items-center justify-center rounded-full transition-all ${
-                currentMomentIndex === 0
-                  ? 'bg-white/5 text-gray-600 cursor-not-allowed'
-                  : 'bg-white/10 hover:bg-white/20 text-white'
-              }`}
-              title="Previous clip ([)"
-            >
-              <IconPlayerSkipBack size={16} />
-            </button>
+            <Tooltip content="Previous clip ([)" position="bottom">
+              <button
+                onClick={skipToPreviousClip}
+                disabled={currentMomentIndex === 0}
+                className={`w-8 h-8 flex-shrink-0 flex items-center justify-center rounded-full transition-all ${
+                  currentMomentIndex === 0
+                    ? 'bg-white/5 text-gray-600 cursor-not-allowed'
+                    : 'bg-white/10 hover:bg-white/20 text-white'
+                }`}
+              >
+                <IconPlayerSkipBack size={16} />
+              </button>
+            </Tooltip>
           )}
 
           {/* Skip Back 15s */}
-          <button
-            onClick={() => seekToAbsoluteTime(absoluteTime - 15)}
-            className="w-9 h-9 flex-shrink-0 flex items-center justify-center rounded-full bg-white/10 hover:bg-white/20 transition-all"
-            title="Back 15s"
-          >
-            <IconRewindBackward15 size={18} className="text-white" />
-          </button>
+          <Tooltip content="Back 15s" position="bottom">
+            <button
+              onClick={() => seekToAbsoluteTime(absoluteTime - 15)}
+              className="w-9 h-9 flex-shrink-0 flex items-center justify-center rounded-full bg-white/10 hover:bg-white/20 transition-all"
+            >
+              <IconRewindBackward15 size={18} className="text-white" />
+            </button>
+          </Tooltip>
 
           {/* Play/Pause Button */}
-          <button
-            onClick={togglePlay}
-            className="w-11 h-11 flex-shrink-0 flex items-center justify-center rounded-full bg-white/15 hover:bg-white/25 transition-all"
-          >
-            {isPlaying ? (
-              <IconPlayerPause size={24} className="text-white" />
-            ) : (
-              <IconPlayerPlay size={24} className="text-white ml-0.5" />
-            )}
-          </button>
+          <Tooltip content={isPlaying ? "Pause (Space)" : "Play (Space)"} position="bottom">
+            <button
+              onClick={togglePlay}
+              className="w-11 h-11 flex-shrink-0 flex items-center justify-center rounded-full bg-white/15 hover:bg-white/25 transition-all"
+            >
+              {isPlaying ? (
+                <IconPlayerPause size={24} className="text-white" />
+              ) : (
+                <IconPlayerPlay size={24} className="text-white ml-0.5" />
+              )}
+            </button>
+          </Tooltip>
 
           {/* Skip Forward 15s */}
-          <button
-            onClick={() => seekToAbsoluteTime(absoluteTime + 15)}
-            className="w-9 h-9 flex-shrink-0 flex items-center justify-center rounded-full bg-white/10 hover:bg-white/20 transition-all"
-            title="Forward 15s"
-          >
-            <IconRewindForward15 size={18} className="text-white" />
-          </button>
+          <Tooltip content="Forward 15s" position="bottom">
+            <button
+              onClick={() => seekToAbsoluteTime(absoluteTime + 15)}
+              className="w-9 h-9 flex-shrink-0 flex items-center justify-center rounded-full bg-white/10 hover:bg-white/20 transition-all"
+            >
+              <IconRewindForward15 size={18} className="text-white" />
+            </button>
+          </Tooltip>
 
           {/* Skip to Next Clip */}
           {sequence.clipCount > 1 && (
-            <button
-              onClick={skipToNextClip}
-              disabled={currentMomentIndex >= sequence.moments.length - 1}
-              className={`w-8 h-8 flex-shrink-0 flex items-center justify-center rounded-full transition-all ${
-                currentMomentIndex >= sequence.moments.length - 1
-                  ? 'bg-white/5 text-gray-600 cursor-not-allowed'
-                  : 'bg-white/10 hover:bg-white/20 text-white'
-              }`}
-              title="Next clip (])"
-            >
-              <IconPlayerSkipForward size={16} />
-            </button>
+            <Tooltip content="Next clip (])" position="bottom">
+              <button
+                onClick={skipToNextClip}
+                disabled={currentMomentIndex >= sequence.moments.length - 1}
+                className={`w-8 h-8 flex-shrink-0 flex items-center justify-center rounded-full transition-all ${
+                  currentMomentIndex >= sequence.moments.length - 1
+                    ? 'bg-white/5 text-gray-600 cursor-not-allowed'
+                    : 'bg-white/10 hover:bg-white/20 text-white'
+                }`}
+              >
+                <IconPlayerSkipForward size={16} />
+              </button>
+            </Tooltip>
           )}
 
           {/* Time + Timeline */}
-          <span className="text-sm text-gray-400 w-12 tabular-nums ml-2">{formatTime(absoluteTime)}</span>
-          <input
-            type="range"
-            min={0}
-            max={totalDuration || 0}
-            step={0.1}
-            value={absoluteTime}
-            onChange={handleSeek}
-            className="flex-1 h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer"
-          />
-          <span className="text-sm text-gray-400 w-12 tabular-nums">{formatTime(totalDuration)}</span>
+          {(() => {
+            // When trimmed (and not in trim mode), show trimmed range
+            const effectiveStart = (!isTrimming && trimPoints) ? trimPoints.inPoint : 0;
+            const effectiveEnd = (!isTrimming && trimPoints) ? trimPoints.outPoint : totalDuration;
+            const clampedTime = Math.max(effectiveStart, Math.min(effectiveEnd, absoluteTime));
+
+            return (
+              <>
+                <span className="text-sm text-gray-400 w-12 tabular-nums ml-2">{formatTime(clampedTime - effectiveStart)}</span>
+                <input
+                  type="range"
+                  min={effectiveStart}
+                  max={effectiveEnd || 0}
+                  step={0.1}
+                  value={clampedTime}
+                  onChange={handleSeek}
+                  className="flex-1 h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer"
+                />
+                <span className="text-sm text-gray-400 w-12 tabular-nums">{formatTime(effectiveEnd - effectiveStart)}</span>
+              </>
+            );
+          })()}
 
           {/* Playback Speed */}
           <div className="flex items-center gap-1 flex-shrink-0 ml-2">
@@ -797,100 +900,155 @@ export function VideoPlayer({
       {/* Control Bar: Camera + Layout + Date + Toggles */}
       <div className="bg-gray-800/50 rounded-xl px-3 py-2">
         <div className="flex items-center gap-3 flex-wrap">
-          {/* Camera buttons (for single and pip views) */}
-          {(layout === 'single' || layout === 'pip') && (
+          {/* Camera buttons (for single/pip views OR edit mode for camera track) */}
+          {(layout === 'single' || layout === 'pip' || isEditMode || hasCustomCameraTrack) && (
             <div className="flex items-center gap-1">
+              <span className="text-[10px] text-gray-500 mr-1">Cameras:</span>
               {ANGLE_ORDER.map((angle) => {
                 const isAvailable = availableAngles.includes(angle);
-                const isActive = selectedAngle === angle;
+                const isActive = selectedAngle === angle && !useCustomCameraTrack;
 
                 return (
-                  <button
-                    key={angle}
-                    disabled={!isAvailable}
-                    onClick={() => isAvailable && handleAngleChange(angle)}
-                    className={`px-2 py-1 rounded text-xs font-medium transition-all ${
-                      isActive
-                        ? 'bg-blue-600 text-white'
-                        : isAvailable
-                        ? 'bg-gray-700 text-gray-300 hover:bg-gray-600'
-                        : 'bg-gray-800/50 text-gray-600 cursor-not-allowed'
-                    }`}
-                  >
-                    {ANGLE_ICONS[angle]}
-                  </button>
+                  <Tooltip key={angle} content={ANGLE_LABELS[angle]} position="top">
+                    <button
+                      disabled={!isAvailable}
+                      onClick={() => {
+                        if (isAvailable) {
+                          setUseCustomCameraTrack(false);
+                          handleAngleChange(angle);
+                        }
+                      }}
+                      className={`p-1.5 rounded text-xs font-medium transition-all ${
+                        isActive
+                          ? isEditMode ? 'bg-purple-600 text-white' : 'bg-blue-600 text-white'
+                          : isAvailable
+                          ? 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                          : 'bg-gray-800/50 text-gray-600 cursor-not-allowed'
+                      }`}
+                    >
+                      {ANGLE_ICONS[angle]}
+                    </button>
+                  </Tooltip>
                 );
               })}
+              {/* Custom camera track button */}
+              {hasCustomCameraTrack && (
+                <Tooltip content="Use custom camera track" position="top">
+                  <button
+                    onClick={() => setUseCustomCameraTrack(true)}
+                    className={`px-2 py-1 rounded text-xs font-medium transition-all flex items-center gap-1 ${
+                      useCustomCameraTrack
+                        ? 'bg-gradient-to-r from-purple-600 to-pink-600 text-white'
+                        : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                    }`}
+                  >
+                    <IconWand size={14} />
+                    <span>Custom</span>
+                  </button>
+                </Tooltip>
+              )}
             </div>
           )}
 
           {/* Divider */}
-          {(layout === 'single' || layout === 'pip') && (
+          {(layout === 'single' || layout === 'pip' || isEditMode || hasCustomCameraTrack) && (
             <div className="w-px h-5 bg-gray-700" />
           )}
 
           {/* Layout buttons */}
           <div className="flex items-center gap-1">
+            <span className="text-[10px] text-gray-500 mr-1">Layout:</span>
             {LAYOUTS.map((l) => (
-              <button
-                key={l.id}
-                onClick={() => handleLayoutChange(l.id)}
-                className={`px-2 py-1 rounded text-xs font-medium transition-all ${
-                  layout === l.id
-                    ? 'bg-blue-600 text-white'
-                    : 'bg-gray-700 text-gray-400 hover:bg-gray-600'
-                }`}
-                title={l.label}
-              >
-                {l.icon}
-              </button>
+              <Tooltip key={l.id} content={l.label} position="top">
+                <button
+                  onClick={() => handleLayoutChange(l.id)}
+                  className={`p-1.5 rounded text-xs font-medium transition-all ${
+                    layout === l.id
+                      ? 'bg-blue-600 text-white'
+                      : 'bg-gray-700 text-gray-400 hover:bg-gray-600'
+                  }`}
+                >
+                  {l.icon}
+                </button>
+              </Tooltip>
             ))}
           </div>
 
-          {/* Date/Time */}
-          <div className="text-xs text-gray-500">
-            {currentMoment.time} · {currentMoment.date}
-          </div>
+          {/* Divider */}
+          <div className="w-px h-5 bg-gray-700" />
+
+          {/* Trim button */}
+          <Tooltip content="Trim video (E)" position="top">
+            <button
+              onClick={toggleTrimMode}
+              className={`px-2 py-1 rounded text-xs font-medium transition-all flex items-center gap-1 ${
+                isTrimming
+                  ? 'bg-yellow-500 text-black'
+                  : isEditMode
+                    ? 'bg-purple-600 text-white'
+                    : 'bg-gray-700 text-gray-400 hover:bg-gray-600'
+              }`}
+            >
+              <IconScissors size={14} />
+              <span>Trim</span>
+            </button>
+          </Tooltip>
 
           {/* Spacer */}
           <div className="flex-1" />
 
           {/* Overlay Toggles */}
           <div className="flex items-center gap-1">
-            <button
-              onClick={() => setShowTelemetry(prev => !prev)}
-              className={`p-1.5 rounded transition-all ${
-                showTelemetry
-                  ? 'bg-green-600 text-white'
-                  : 'bg-gray-700 text-gray-400 hover:bg-gray-600'
-              }`}
-              title="Toggle telemetry (T)"
-            >
-              <IconBolt size={16} />
-            </button>
-            <button
-              onClick={() => setShowMap(prev => !prev)}
-              className={`p-1.5 rounded transition-all ${
-                showMap
-                  ? 'bg-green-600 text-white'
-                  : 'bg-gray-700 text-gray-400 hover:bg-gray-600'
-              }`}
-              title="Toggle map (M)"
-            >
-              <IconMapPin size={16} />
-            </button>
+            <span className="text-[10px] text-gray-500 mr-1">Show:</span>
+            <Tooltip content="Telemetry (T)" position="top">
+              <button
+                onClick={() => setShowTelemetry(prev => !prev)}
+                className={`p-1.5 rounded transition-all ${
+                  showTelemetry
+                    ? 'bg-green-600 text-white'
+                    : 'bg-gray-700 text-gray-400 hover:bg-gray-600'
+                }`}
+              >
+                <IconBolt size={16} />
+              </button>
+            </Tooltip>
+            <Tooltip content="Map (M)" position="top">
+              <button
+                onClick={() => setShowMap(prev => !prev)}
+                className={`p-1.5 rounded transition-all ${
+                  showMap
+                    ? 'bg-green-600 text-white'
+                    : 'bg-gray-700 text-gray-400 hover:bg-gray-600'
+                }`}
+              >
+                <IconMapPin size={16} />
+              </button>
+            </Tooltip>
+            <Tooltip content="Date/Time (D)" position="top">
+              <button
+                onClick={() => setShowDateTime(prev => !prev)}
+                className={`p-1.5 rounded transition-all ${
+                  showDateTime
+                    ? 'bg-green-600 text-white'
+                    : 'bg-gray-700 text-gray-400 hover:bg-gray-600'
+                }`}
+              >
+                <IconClock size={16} />
+              </button>
+            </Tooltip>
 
             {/* Divider */}
             <div className="w-px h-4 bg-gray-600 mx-1" />
 
             {/* Fullscreen */}
-            <button
-              onClick={toggleFullscreen}
-              className="p-1.5 rounded bg-gray-700 text-gray-400 hover:bg-gray-600 transition-all"
-              title="Fullscreen (F)"
-            >
-              {isFullscreen ? <IconMinimize size={16} /> : <IconMaximize size={16} />}
-            </button>
+            <Tooltip content={isFullscreen ? "Exit fullscreen (F)" : "Fullscreen (F)"} position="top">
+              <button
+                onClick={toggleFullscreen}
+                className="p-1.5 rounded bg-gray-700 text-gray-400 hover:bg-gray-600 transition-all"
+              >
+                {isFullscreen ? <IconMinimize size={16} /> : <IconMaximize size={16} />}
+              </button>
+            </Tooltip>
 
             {/* Divider */}
             <div className="w-px h-4 bg-gray-600 mx-1" />
@@ -903,33 +1061,42 @@ export function VideoPlayer({
               fps={fps}
               speedUnit={speedUnit}
               filename={`tesla-${sequence.dateRange}-${sequence.timeRange.split(' - ')[0].replace(/:/g, '-')}`}
+              trimPoints={trimPoints}
+              cameraSegments={cameraSegments}
+              showTelemetry={showTelemetry}
+              showDateTime={showDateTime}
+              showMap={showMap}
             />
 
             {/* Divider */}
             <div className="w-px h-4 bg-gray-600 mx-1" />
 
             {/* Sequence Selector */}
-            <div className="relative" data-sequence-menu>
-              <button
-                onClick={() => setShowSequenceMenu(prev => !prev)}
-                className={`flex items-center gap-1.5 px-2 py-1 rounded text-xs font-medium transition-all ${
-                  showSequenceMenu
-                    ? 'bg-blue-600 text-white'
-                    : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
-                }`}
-              >
-                <IconList size={14} />
-                <span className="max-w-[100px] truncate">
-                  {sequences.length > 1 ? `${sequences.indexOf(sequence) + 1}/${sequences.length}` : 'Sequences'}
-                </span>
-                <IconChevronDown size={14} className={`transition-transform ${showSequenceMenu ? 'rotate-180' : ''}`} />
-              </button>
+            <button
+              onClick={() => setShowSequenceMenu(true)}
+              className="flex items-center gap-1 px-2 py-1.5 rounded text-xs font-medium transition-all bg-gray-700 text-gray-300 hover:bg-gray-600"
+            >
+              <IconList size={14} />
+              <span>
+                {sequences.length > 1 ? `${sequences.indexOf(sequence) + 1}/${sequences.length}` : 'Files'}
+              </span>
+            </button>
 
-              {/* Sequence Dropdown Menu */}
-              {showSequenceMenu && (
-                <div className="absolute bottom-full right-0 mb-2 w-72 bg-gray-900 border border-gray-700 rounded-lg shadow-xl overflow-hidden z-50">
+            {/* Sequence Dialog */}
+            {showSequenceMenu && (
+              <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm" onClick={() => setShowSequenceMenu(false)}>
+                <div className="bg-gray-900 rounded-xl w-80 max-h-[70vh] shadow-2xl border border-gray-700 overflow-hidden" onClick={e => e.stopPropagation()}>
+                  <div className="px-4 py-3 border-b border-gray-700 flex items-center justify-between">
+                    <h3 className="text-sm font-semibold text-white">Video Files</h3>
+                    <button onClick={() => setShowSequenceMenu(false)} className="text-gray-400 hover:text-white">
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </button>
+                  </div>
+
                   <div className="max-h-64 overflow-y-auto">
-                    {sequences.map((seq, idx) => {
+                    {sequences.map((seq) => {
                       const isSelected = seq.id === sequence.id;
                       return (
                         <button
@@ -938,7 +1105,7 @@ export function VideoPlayer({
                             onSelectSequence(seq);
                             setShowSequenceMenu(false);
                           }}
-                          className={`w-full px-3 py-2 flex items-center gap-3 text-left transition-colors ${
+                          className={`w-full px-4 py-3 flex items-center gap-3 text-left transition-colors ${
                             isSelected
                               ? 'bg-blue-600/20 text-white'
                               : 'hover:bg-gray-800 text-gray-300'
@@ -970,8 +1137,8 @@ export function VideoPlayer({
                   </div>
 
                   {/* Actions */}
-                  <div className="border-t border-gray-700 p-2 flex gap-2">
-                    <label className="flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 rounded bg-gray-800 hover:bg-gray-700 text-gray-300 text-xs font-medium cursor-pointer transition-colors">
+                  <div className="border-t border-gray-700 p-3 flex gap-2">
+                    <label className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-gray-800 hover:bg-gray-700 text-gray-300 text-xs font-medium cursor-pointer transition-colors">
                       <IconPlus size={14} />
                       Add More
                       <input
@@ -992,32 +1159,42 @@ export function VideoPlayer({
                         onClear();
                         setShowSequenceMenu(false);
                       }}
-                      className="flex items-center justify-center gap-1.5 px-3 py-1.5 rounded bg-red-600/20 hover:bg-red-600/30 text-red-400 text-xs font-medium transition-colors"
+                      className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-red-600/20 hover:bg-red-600/30 text-red-400 text-xs font-medium transition-colors"
                     >
                       <IconTrash size={14} />
                       Clear
                     </button>
                   </div>
                 </div>
-              )}
-            </div>
+              </div>
+            )}
           </div>
         </div>
       </div>
 
-      {/* Telemetry Timeline */}
-      {allSeiMessages.length > 0 && (
-        <TelemetryTimeline
-          allSeiMessages={allSeiMessages}
-          fps={fps}
-          duration={totalDuration}
-          currentTime={absoluteTime}
-          onSeek={handleTimelineSeek}
-          onDraggingChange={setIsTimelineDragging}
-          clipBoundaries={sequence.momentOffsets}
-        />
-      )}
-
+        {/* Telemetry Timeline */}
+        {allSeiMessages.length > 0 && (
+          <TelemetryTimeline
+            allSeiMessages={allSeiMessages}
+            fps={fps}
+            duration={totalDuration}
+            currentTime={absoluteTime}
+            onSeek={handleTimelineSeek}
+            onDraggingChange={setIsTimelineDragging}
+            clipBoundaries={sequence.momentOffsets}
+            isEditMode={isEditMode}
+            isTrimming={isTrimming}
+            onTrimmingChange={setIsTrimming}
+            trimPoints={trimPoints}
+            onTrimChange={handleTrimChange}
+            onTrimPreview={handleTrimPreview}
+            cameraSegments={cameraSegments}
+            onCameraSegmentsChange={setCameraSegments}
+            selectedAngle={selectedAngle}
+            availableAngles={availableAngles}
+          />
+        )}
+      </div>
     </div>
   );
 }

@@ -65,6 +65,29 @@ export const ANGLE_LABELS: Record<string, string> = {
 
 export const ANGLE_ORDER = ['front', 'left_repeater', 'right_repeater', 'back', 'left_pillar', 'right_pillar'];
 
+/** Trim points for video export */
+export interface TrimPoints {
+  inPoint: number;   // Start time in seconds
+  outPoint: number;  // End time in seconds
+}
+
+/** Camera angle segment for multi-angle exports */
+export interface CameraSegment {
+  startTime: number;
+  endTime: number;
+  angle: string;     // 'front', 'back', etc.
+}
+
+/** Colors for camera angle visualization in timeline */
+export const ANGLE_COLORS: Record<string, string> = {
+  front: '#3B82F6',      // blue
+  back: '#8B5CF6',       // purple
+  left_repeater: '#22C55E',  // green
+  right_repeater: '#F59E0B', // amber
+  left_pillar: '#06B6D4',    // cyan
+  right_pillar: '#EC4899',   // pink
+};
+
 /** Parse camera angle from filename */
 export function parseAngle(filename: string): string | null {
   const lower = filename.toLowerCase();
