@@ -99,14 +99,21 @@ export default function Home() {
               </div>
 
               {/* Live Telemetry */}
-              <div className="bg-gray-900/50 rounded-xl p-5 border border-gray-800">
-                <div className="w-10 h-10 rounded-lg bg-yellow-600/20 flex items-center justify-center mb-3">
-                  <svg className="w-5 h-5 text-yellow-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-                  </svg>
+              <div className="bg-gray-900/50 rounded-xl p-5 border border-gray-800 relative overflow-hidden">
+                <img
+                  src="/features/telemetry.png"
+                  alt=""
+                  className="absolute -right-4 -top-2 w-24 rotate-6 opacity-60 pointer-events-none"
+                />
+                <div className="relative z-10">
+                  <div className="w-10 h-10 rounded-lg bg-yellow-600/20 flex items-center justify-center mb-3">
+                    <svg className="w-5 h-5 text-yellow-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                    </svg>
+                  </div>
+                  <h3 className="font-semibold mb-1">Live Telemetry</h3>
+                  <p className="text-sm text-gray-500">Speed, GPS, steering angle, and G-forces overlaid in real-time</p>
                 </div>
-                <h3 className="font-semibold mb-1">Live Telemetry</h3>
-                <p className="text-sm text-gray-500">Speed, GPS, steering angle, and G-forces overlaid in real-time</p>
               </div>
 
               {/* All 6 Cameras */}
@@ -121,26 +128,40 @@ export default function Home() {
               </div>
 
               {/* Interactive Map */}
-              <div className="bg-gray-900/50 rounded-xl p-5 border border-gray-800">
-                <div className="w-10 h-10 rounded-lg bg-green-600/20 flex items-center justify-center mb-3">
-                  <svg className="w-5 h-5 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
-                  </svg>
+              <div className="bg-gray-900/50 rounded-xl p-5 border border-gray-800 relative overflow-hidden">
+                <img
+                  src="/features/map.png"
+                  alt=""
+                  className="absolute -right-4 -top-2 w-24 rotate-6 opacity-60 pointer-events-none rounded-lg"
+                />
+                <div className="relative z-10">
+                  <div className="w-10 h-10 rounded-lg bg-green-600/20 flex items-center justify-center mb-3">
+                    <svg className="w-5 h-5 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                    </svg>
+                  </div>
+                  <h3 className="font-semibold mb-1">Interactive Map</h3>
+                  <p className="text-sm text-gray-500">Live GPS tracking synced with video playback</p>
                 </div>
-                <h3 className="font-semibold mb-1">Interactive Map</h3>
-                <p className="text-sm text-gray-500">Live GPS tracking synced with video playback</p>
               </div>
 
               {/* Event Timeline */}
-              <div className="bg-gray-900/50 rounded-xl p-5 border border-gray-800">
-                <div className="w-10 h-10 rounded-lg bg-orange-600/20 flex items-center justify-center mb-3">
-                  <svg className="w-5 h-5 text-orange-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-                  </svg>
+              <div className="bg-gray-900/50 rounded-xl p-5 border border-gray-800 relative overflow-hidden">
+                <img
+                  src="/features/timeline.png"
+                  alt=""
+                  className="absolute -right-6 top-1 w-28 rotate-6 opacity-60 pointer-events-none rounded-lg"
+                />
+                <div className="relative z-10">
+                  <div className="w-10 h-10 rounded-lg bg-orange-600/20 flex items-center justify-center mb-3">
+                    <svg className="w-5 h-5 text-orange-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                    </svg>
+                  </div>
+                  <h3 className="font-semibold mb-1">Event Timeline</h3>
+                  <p className="text-sm text-gray-500">Visual timeline showing brake, gas, blinkers, and steering</p>
                 </div>
-                <h3 className="font-semibold mb-1">Event Timeline</h3>
-                <p className="text-sm text-gray-500">Visual timeline showing brake, gas, blinkers, and steering</p>
               </div>
 
               {/* Video Export */}
