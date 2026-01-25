@@ -1,36 +1,111 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# ExportDash
 
-## Getting Started
+> Tesla dashcam viewer with seamless playback, live telemetry overlays, and video export.
 
-First, run the development server:
+**[Live Demo → exportdash.cam](https://exportdash.cam)**
+
+## Features
+
+- **Seamless Playback** — Consecutive 1-minute Tesla clips automatically merged into continuous video
+- **Live Telemetry Overlay** — Speed, GPS coordinates, steering angle, and G-forces displayed in real-time
+- **All 6 Camera Angles** — Front, rear, left/right repeaters, and pillar cameras with flexible layouts
+- **Interactive Map** — Live GPS tracking synced with video playback
+- **Event Timeline** — Visual timeline showing brake, gas, turn signals, and steering events
+- **Video Export** — Export clips with telemetry burned into the video
+- **100% Client-Side** — All processing happens in your browser, no uploads required
+
+## Quick Start
 
 ```bash
+# Clone the repo
+git clone https://github.com/nobig-deals/exportdash.cam.git
+cd exportdash.cam
+
+# Install dependencies
+npm install
+
+# Start dev server
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [http://localhost:3000](http://localhost:3000) and drop your TeslaCam folder.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## How It Works
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+Tesla dashcam videos contain embedded SEI (Supplemental Enhancement Information) metadata with telemetry data:
 
-## Learn More
+- Vehicle speed
+- GPS coordinates & heading
+- Steering wheel angle
+- Accelerator & brake pedal state
+- Turn signal status
+- G-force readings
 
-To learn more about Next.js, take a look at the following resources:
+ExportDash extracts this metadata using [Tesla's official protobuf schema](https://github.com/teslamotors/dashcam) and displays it as an overlay synchronized with video playback.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+### Sequence Detection
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+Tesla records 1-minute clips continuously. ExportDash automatically detects consecutive clips and merges them:
 
-## Deploy on Vercel
+```
+Clip 1: 10:30:00 (60s) ─┐
+Clip 2: 10:31:00 (60s)  ├─→ Single 5-minute sequence
+Clip 3: 10:32:00 (60s)  │
+Clip 4: 10:33:00 (60s)  │
+Clip 5: 10:34:00 (60s) ─┘
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+Clip 6: 10:45:00 (60s) ─→ New sequence (12min gap)
+```
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## Tech Stack
+
+- **Framework:** Next.js 15 with App Router
+- **Styling:** Tailwind CSS
+- **Video:** Native HTML5 video with WebCodecs for export
+- **Maps:** Leaflet with OpenStreetMap
+- **Protobuf:** protobufjs for SEI metadata decoding
+
+## Keyboard Shortcuts
+
+| Key | Action |
+|-----|--------|
+| `Space` | Play / Pause |
+| `←` `→` | Seek ±5 seconds |
+| `[` `]` | Previous / Next clip |
+| `1` `2` `3` `4` | Layout: Single / PiP / Triple / All |
+| `T` | Toggle telemetry overlay |
+| `M` | Toggle map |
+| `U` | Toggle mph / km/h |
+| `F` | Fullscreen |
+
+## Project Structure
+
+```
+src/
+├── app/
+│   └── page.tsx          # Main app component
+├── components/
+│   ├── VideoPlayer.tsx   # Multi-camera player with controls
+│   ├── TelemetryCard.tsx # Speed/telemetry overlay
+│   ├── TelemetryTimeline.tsx # Event timeline visualization
+│   ├── MapView.tsx       # GPS map overlay
+│   ├── VideoExporter.tsx # WebCodecs-based export
+│   ├── DropZone.tsx      # File/folder drop handling
+│   └── LoadingScreen.tsx # Processing progress UI
+├── hooks/
+│   └── useSeiData.ts     # SEI extraction & time sync
+├── lib/
+│   ├── dashcam-mp4.ts    # MP4 parsing & SEI extraction
+│   └── sequence-detector.ts # Clip merging logic
+└── types/
+    └── video.ts          # TypeScript definitions
+```
+
+## Credits
+
+- [Tesla Dashcam](https://github.com/teslamotors/dashcam) — Official SEI metadata protobuf schema
+- [ViewDash.cam](https://viewdash.cam/) ([source](https://github.com/pixeye33/viewdashcam)) — Original inspiration
+
+## License
+
+MIT
