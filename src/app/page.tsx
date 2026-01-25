@@ -103,7 +103,7 @@ export default function Home() {
                 <img
                   src="/features/telemetry.png"
                   alt=""
-                  className="absolute -right-4 -top-2 w-24 rotate-6 opacity-60 pointer-events-none"
+                  className="absolute -right-4 -top-2 w-24 rotate-6 opacity-100 pointer-events-none"
                 />
                 <div className="relative z-10">
                   <div className="w-10 h-10 rounded-lg bg-yellow-600/20 flex items-center justify-center mb-3">
@@ -132,7 +132,7 @@ export default function Home() {
                 <img
                   src="/features/map.png"
                   alt=""
-                  className="absolute -right-4 -top-2 w-24 rotate-6 opacity-60 pointer-events-none rounded-lg"
+                  className="absolute -right-4 -top-2 w-24 rotate-6 opacity-100 pointer-events-none rounded-lg"
                 />
                 <div className="relative z-10">
                   <div className="w-10 h-10 rounded-lg bg-green-600/20 flex items-center justify-center mb-3">
@@ -151,7 +151,7 @@ export default function Home() {
                 <img
                   src="/features/timeline.png"
                   alt=""
-                  className="absolute -right-6 top-1 w-28 rotate-6 opacity-60 pointer-events-none rounded-lg"
+                  className="absolute -right-6 top-1 w-28 rotate-6 opacity-100 pointer-events-none rounded-lg"
                 />
                 <div className="relative z-10">
                   <div className="w-10 h-10 rounded-lg bg-orange-600/20 flex items-center justify-center mb-3">
