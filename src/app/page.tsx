@@ -208,7 +208,17 @@ export default function Home() {
                   </svg>
                 </div>
                 <h3 className="font-semibold mb-1">Open Source</h3>
-                <p className="text-sm text-gray-500">MIT licensed. View and contribute on GitHub.</p>
+                <p className="text-sm text-gray-500">
+                  MIT licensed.{' '}
+                  <a
+                    href="https://github.com/nobig-deals/exportdash.cam"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-gray-400 hover:text-gray-300 underline underline-offset-2"
+                  >
+                    View and contribute on GitHub
+                  </a>
+                </p>
               </div>
             </div>
 
