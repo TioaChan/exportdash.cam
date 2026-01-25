@@ -13,8 +13,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Tesla Cam Viewer",
-  description: "View Tesla dashcam footage with real-time telemetry overlay",
+  title: "ExportDash — Tesla Dashcam Viewer",
+  description: "Tesla dashcam viewer with seamless playback, live telemetry overlays, and video export. 100% client-side, no uploads.",
 };
 
 export default function RootLayout({
