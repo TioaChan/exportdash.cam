@@ -683,9 +683,11 @@ export function VideoPlayer({
           </div>
         )}
 
-        {/* Map Overlay - Bottom Right */}
+        {/* Map Overlay - Top Right for PiP, Bottom Right for others */}
         {showMap && (
-          <div className="absolute bottom-3 right-3 z-20 w-[180px] h-[180px] rounded-lg overflow-hidden shadow-xl opacity-90 hover:opacity-100 transition-opacity">
+          <div className={`absolute z-20 w-[180px] h-[180px] rounded-lg overflow-hidden shadow-xl opacity-90 hover:opacity-100 transition-opacity ${
+            layout === 'pip' ? 'top-3 right-3' : 'bottom-3 right-3'
+          }`}>
             <Suspense fallback={
               <div className="bg-gray-900 w-full h-full flex items-center justify-center">
                 <div className="text-gray-500 text-xs">Loading...</div>
