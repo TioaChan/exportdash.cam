@@ -32,6 +32,18 @@ npm run dev
 
 Open [http://localhost:3000](http://localhost:3000) and drop your TeslaCam folder.
 
+### Docker
+
+```bash
+# Build image
+docker build -t exportdash .
+
+# Run container
+docker run -p 8080:80 exportdash
+```
+
+Open [http://localhost:8080](http://localhost:8080)
+
 ## How It Works
 
 Tesla dashcam videos contain embedded SEI (Supplemental Enhancement Information) metadata with telemetry data:
@@ -77,6 +89,8 @@ Clip 6: 10:45:00 (60s) ─→ New sequence (12min gap)
 | `1` `2` `3` `4` | Layout: Single / PiP / Triple / All |
 | `T` | Toggle telemetry overlay |
 | `M` | Toggle map |
+| `D` | Toggle date/time overlay |
+| `E` | Toggle edit mode (trim) |
 | `U` | Toggle mph / km/h |
 | `F` | Fullscreen |
 
