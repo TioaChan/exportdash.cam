@@ -308,6 +308,10 @@ export function VideoPlayer({
   useEffect(() => {
     if (!useCustomCameraTrack || cameraSegments.length === 0) return;
 
+    // Skip while a restore is pending — the video is remounting and localTime
+    // may temporarily be 0, which would cause a false switch back
+    if (pendingRestoreRef.current) return;
+
     // Find which segment the current time falls into
     const currentSegment = cameraSegments.find(
       seg => absoluteTime >= seg.startTime && absoluteTime < seg.endTime
