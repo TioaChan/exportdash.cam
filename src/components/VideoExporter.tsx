@@ -452,7 +452,8 @@ export function VideoExporter({
     ctx: CanvasRenderingContext2D,
     seiData: SeiData | null,
     width: number,
-    height: number
+    height: number,
+    position: 'top-right' | 'bottom-right' = 'bottom-right'
   ) => {
     if (!seiData?.latitude_deg || !seiData?.longitude_deg) return;
     if (seiData.latitude_deg === 0 && seiData.longitude_deg === 0) return;
@@ -461,7 +462,7 @@ export function VideoExporter({
     const mapSize = 160 * scale;
     const padding = 12 * scale;
     const x = width - mapSize - padding;
-    const y = height - mapSize - padding;
+    const y = position === 'top-right' ? padding : height - mapSize - padding;
 
     const lat = seiData.latitude_deg;
     const lng = seiData.longitude_deg;
@@ -931,7 +932,7 @@ export function VideoExporter({
           drawDateTime(ctx, width, height, dynamicDate, dynamicTime, showTelemetry);
         }
         if (showMap) {
-          await drawMiniMap(ctx, seiData, width, height);
+          await drawMiniMap(ctx, seiData, width, height, layout === 'pip' ? 'top-right' : 'bottom-right');
         }
 
         // Frame timestamp is relative to export start (0-based for exported video)
