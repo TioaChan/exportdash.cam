@@ -1071,6 +1071,7 @@ export function VideoPlayer({
               showTelemetry={showTelemetry}
               showDateTime={showDateTime}
               showMap={showMap}
+              layout={layout}
             />
 
             {/* Divider */}
