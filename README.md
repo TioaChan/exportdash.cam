@@ -6,6 +6,8 @@
 
 ![ExportDash Screenshot](public/screenshot.png)
 
+**[How it works (full walkthrough) →](https://www.youtube.com/watch?v=6MzdHHmzrME)**
+
 ## Features
 
 - **Seamless Playback** — Consecutive 1-minute Tesla clips automatically merged into continuous video
