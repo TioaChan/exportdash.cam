@@ -308,16 +308,21 @@ export function VideoPlayer({
   useEffect(() => {
     if (!useCustomCameraTrack || cameraSegments.length === 0) return;
 
+    // Skip while a restore is pending — the video is remounting and localTime
+    // may temporarily be 0, which would cause a false switch back
+    if (pendingRestoreRef.current) return;
+
     // Find which segment the current time falls into
     const currentSegment = cameraSegments.find(
       seg => absoluteTime >= seg.startTime && absoluteTime < seg.endTime
     );
 
     if (currentSegment && currentSegment.angle !== selectedAngle) {
-      // Switch to the segment's angle
+      // Save playback state before switching so video resumes after remount
+      pendingRestoreRef.current = { time: localTime, playing: isPlaying };
       setSelectedAngle(currentSegment.angle);
     }
-  }, [useCustomCameraTrack, absoluteTime, cameraSegments, selectedAngle]);
+  }, [useCustomCameraTrack, absoluteTime, cameraSegments, selectedAngle, localTime, isPlaying]);
 
   // Custom setters that preserve playback state
   const handleLayoutChange = useCallback((newLayout: LayoutType) => {
