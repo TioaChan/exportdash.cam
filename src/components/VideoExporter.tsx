@@ -753,7 +753,10 @@ export function VideoExporter({
           drawTelemetry(ctx, seiData, width, height, telemetryIcons);
         }
         if (showDateTime) {
-          drawDateTime(ctx, width, height, moment.date, moment.time, showTelemetry);
+          const realTime = new Date(moment.timestamp.getTime() + localTime * 1000);
+          const dynamicDate = realTime.toISOString().split('T')[0];
+          const dynamicTime = realTime.toTimeString().split(' ')[0];
+          drawDateTime(ctx, width, height, dynamicDate, dynamicTime, showTelemetry);
         }
         if (showMap) {
           await drawMiniMap(ctx, seiData, width, height);

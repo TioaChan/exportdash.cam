@@ -762,7 +762,12 @@ export function VideoPlayer({
             showTelemetry ? 'top-[95px]' : 'top-3'
           }`}>
             <div className="px-2 py-1 rounded-md bg-black/50 backdrop-blur-sm text-white/90 text-xs font-medium">
-              {currentMoment.date} &nbsp; {currentMoment.time}
+              {(() => {
+                const realTime = new Date(currentMoment.timestamp.getTime() + localTime * 1000);
+                const date = realTime.toISOString().split('T')[0];
+                const time = realTime.toTimeString().split(' ')[0];
+                return <>{date} &nbsp; {time}</>;
+              })()}
             </div>
           </div>
         )}
