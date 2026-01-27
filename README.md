@@ -16,6 +16,12 @@
 - **Video Export** — Export clips with telemetry burned into the video
 - **100% Client-Side** — All processing happens in your browser, no uploads required
 
+## Deploy
+
+[![Deploy on Railway](https://railway.com/button.svg)](https://railway.app/new/template?template=https://github.com/nobig-deals/exportdash.cam)
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https://github.com/nobig-deals/exportdash.cam)
+[![Deploy to Heroku](https://www.herokucdn.com/deploy/button.svg)](https://heroku.com/deploy/?template=https://github.com/nobig-deals/exportdash.cam)
+
 ## Quick Start
 
 ```bash
@@ -40,6 +46,14 @@ docker build -t exportdash .
 
 # Run container
 docker run -p 8080:80 exportdash
+```
+
+Open [http://localhost:8080](http://localhost:8080)
+
+### Docker Compose
+
+```bash
+docker compose up
 ```
 
 Open [http://localhost:8080](http://localhost:8080)
