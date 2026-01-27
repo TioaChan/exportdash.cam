@@ -1041,6 +1041,14 @@ export function VideoPlayer({
                 <IconClock size={16} />
               </button>
             </Tooltip>
+            <Tooltip content={`Speed: ${speedUnit === 'mph' ? 'mph' : 'km/h'} (click to switch)`} position="top">
+              <button
+                onClick={() => setSpeedUnit(prev => prev === 'mph' ? 'kmh' : 'mph')}
+                className="px-1.5 h-[28px] flex items-center rounded transition-all bg-gray-700 text-gray-300 hover:bg-gray-600 text-[10px] font-bold leading-none"
+              >
+                {speedUnit === 'mph' ? 'MPH' : 'KMH'}
+              </button>
+            </Tooltip>
 
             {/* Divider */}
             <div className="w-px h-4 bg-gray-600 mx-1" />
