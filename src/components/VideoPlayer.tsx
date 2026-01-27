@@ -309,10 +309,11 @@ export function VideoPlayer({
     );
 
     if (currentSegment && currentSegment.angle !== selectedAngle) {
-      // Switch to the segment's angle
+      // Save playback state before switching so video resumes after remount
+      pendingRestoreRef.current = { time: localTime, playing: isPlaying };
       setSelectedAngle(currentSegment.angle);
     }
-  }, [useCustomCameraTrack, absoluteTime, cameraSegments, selectedAngle]);
+  }, [useCustomCameraTrack, absoluteTime, cameraSegments, selectedAngle, localTime, isPlaying]);
 
   // Custom setters that preserve playback state
   const handleLayoutChange = useCallback((newLayout: LayoutType) => {
