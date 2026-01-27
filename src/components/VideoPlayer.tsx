@@ -120,6 +120,7 @@ export function VideoPlayer({
   const [showTelemetry, setShowTelemetry] = useState(true);
   const [showDateTime, setShowDateTime] = useState(true);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [videoAspectRatio, setVideoAspectRatio] = useState<number | null>(null);
   const [isTimelineDragging, setIsTimelineDragging] = useState(false);
 
   // Edit mode state
@@ -266,6 +267,10 @@ export function VideoPlayer({
 
   const handleLoadedMetadata = useCallback(() => {
     if (mainVideoRef.current) {
+      const { videoWidth, videoHeight } = mainVideoRef.current;
+      if (videoWidth && videoHeight) {
+        setVideoAspectRatio(videoWidth / videoHeight);
+      }
       // Restore playback position if pending
       if (pendingRestoreRef.current) {
         const { time, playing } = pendingRestoreRef.current;
@@ -620,50 +625,58 @@ export function VideoPlayer({
         a => a !== selectedAngle && availableAngles.includes(a)
       );
 
+      const ar = videoAspectRatio || 16 / 9;
+
       return (
-        <div className="relative w-full bg-black flex items-center justify-center aspect-video max-h-full">
-          <div className="w-full h-full">
-            {renderVideo(selectedAngle, true, 'w-full h-full')}
-          </div>
-          <div className="absolute top-3 right-3 bg-black/60 backdrop-blur-sm rounded px-2 py-1 text-xs font-medium flex items-center gap-1">
-            {ANGLE_ICONS[selectedAngle]} {ANGLE_LABELS[selectedAngle]}
-          </div>
-
-          {/* Corner PiP windows */}
-          <div className="absolute bottom-3 left-3 right-3 flex justify-between pointer-events-none">
-            {pipAngles.slice(0, 2).map((angle) => (
-              <div
-                key={angle}
-                className="w-[18%] aspect-video rounded-lg overflow-hidden border border-white/20 shadow-lg pointer-events-auto cursor-pointer hover:border-blue-400 transition-colors"
-                onClick={() => handleAngleChange(angle)}
-              >
-                {renderVideo(angle, false, 'w-full h-full')}
-              </div>
-            ))}
-          </div>
-
-          {/* Optional third PiP in top-left */}
-          {pipAngles[2] && (
-            <div
-              className="absolute top-3 left-3 w-[18%] aspect-video rounded-lg overflow-hidden border border-white/20 shadow-lg cursor-pointer hover:border-blue-400 transition-colors"
-              onClick={() => handleAngleChange(pipAngles[2])}
-            >
-              {renderVideo(pipAngles[2], false, 'w-full h-full')}
+        <div className="relative w-full bg-black flex items-center justify-center aspect-video max-h-full overflow-hidden">
+          {/* Inner wrapper sized to actual video aspect ratio */}
+          <div
+            className="relative max-w-full max-h-full"
+            style={{ aspectRatio: `${ar}` }}
+          >
+            <div className="w-full h-full">
+              {renderVideo(selectedAngle, true, 'w-full h-full')}
             </div>
-          )}
+            <div className="absolute top-3 right-3 bg-black/60 backdrop-blur-sm rounded px-2 py-1 text-xs font-medium flex items-center gap-1">
+              {ANGLE_ICONS[selectedAngle]} {ANGLE_LABELS[selectedAngle]}
+            </div>
 
-          {renderPlayOverlay()}
+            {/* Corner PiP windows */}
+            <div className="absolute bottom-3 left-3 right-3 flex justify-between pointer-events-none">
+              {pipAngles.slice(0, 2).map((angle) => (
+                <div
+                  key={angle}
+                  className="w-[18%] rounded-lg overflow-hidden border border-white/20 shadow-lg pointer-events-auto cursor-pointer hover:border-blue-400 transition-colors"
+                  onClick={() => handleAngleChange(angle)}
+                >
+                  {renderVideo(angle, false, 'w-full')}
+                </div>
+              ))}
+            </div>
+
+            {/* Optional third PiP in top-left */}
+            {pipAngles[2] && (
+              <div
+                className="absolute top-3 left-3 w-[18%] rounded-lg overflow-hidden border border-white/20 shadow-lg cursor-pointer hover:border-blue-400 transition-colors"
+                onClick={() => handleAngleChange(pipAngles[2])}
+              >
+                {renderVideo(pipAngles[2], false, 'w-full')}
+              </div>
+            )}
+
+            {renderPlayOverlay()}
+          </div>
         </div>
       );
     }
 
     // Triple view - front + left + right in a row
     if (layout === 'triple') {
-      const tripleAngles = ['left_repeater', 'front', 'right_repeater'];
+      const tripleAngles = ['left_pillar', 'front', 'right_pillar'];
 
       return (
         <div className="relative w-full bg-black flex items-center justify-center overflow-hidden aspect-video max-h-full">
-          <div className="flex gap-1 h-full p-1 items-center justify-center">
+          <div className="grid grid-cols-3 w-full">
             {tripleAngles.map((angle) => {
               const isMain = angle === selectedAngle;
               const isAvailable = availableAngles.includes(angle);
@@ -671,12 +684,12 @@ export function VideoPlayer({
               return (
                 <div
                   key={angle}
-                  className={`relative h-full aspect-video rounded overflow-hidden ${
-                    isMain ? 'ring-2 ring-blue-500' : ''
+                  className={`relative overflow-hidden ${
+                    isMain ? 'ring-2 ring-inset ring-blue-500' : ''
                   } ${isAvailable ? 'cursor-pointer' : 'opacity-40'}`}
                   onClick={() => isAvailable && handleAngleChange(angle)}
                 >
-                  {renderVideo(angle, isMain, 'w-full h-full')}
+                  {renderVideo(angle, isMain, 'w-full')}
                 </div>
               );
             })}
@@ -737,55 +750,67 @@ export function VideoPlayer({
       {/* Video Container with Overlays */}
       <div
         ref={videoContainerRef}
-        className={`relative bg-black rounded-xl overflow-hidden ${
+        className={`relative bg-black rounded-xl overflow-hidden flex items-center justify-center ${
           isFullscreen ? 'flex-1' : 'max-h-[60vh]'
         }`}
       >
         {renderVideoGrid()}
 
-        {/* Telemetry Overlay - Top Center */}
-        {showTelemetry && (
-          <div className="absolute top-3 left-1/2 -translate-x-1/2 z-20">
-            <TelemetryCard
-              seiData={seiData}
-              isLoading={isLoading}
-              error={error}
-              speedUnit={speedUnit}
-              onSpeedUnitToggle={() => setSpeedUnit(prev => prev === 'mph' ? 'kmh' : 'mph')}
-            />
-          </div>
-        )}
-
-        {/* Date/Time Overlay - Below Telemetry or Top Center */}
-        {showDateTime && (
-          <div className={`absolute left-1/2 -translate-x-1/2 z-20 ${
-            showTelemetry ? 'top-[95px]' : 'top-3'
-          }`}>
-            <div className="px-2 py-1 rounded-md bg-black/50 backdrop-blur-sm text-white/90 text-xs font-medium">
-              {(() => {
-                const realTime = new Date(currentMoment.timestamp.getTime() + localTime * 1000);
-                const date = realTime.toISOString().split('T')[0];
-                const time = realTime.toTimeString().split(' ')[0];
-                return <>{date} &nbsp; {time}</>;
-              })()}
-            </div>
-          </div>
-        )}
-
-        {/* Map Overlay - Top Right for PiP, Bottom Right for others */}
-        {showMap && (
-          <div className={`absolute z-20 w-[180px] h-[180px] rounded-lg overflow-hidden shadow-xl opacity-90 hover:opacity-100 transition-opacity ${
-            layout === 'pip' ? 'top-3 right-3' : 'bottom-3 right-3'
-          }`}>
-            <Suspense fallback={
-              <div className="bg-gray-900 w-full h-full flex items-center justify-center">
-                <div className="text-gray-500 text-xs">Loading...</div>
+        {/* Overlay anchor - matches visible video area */}
+        <div
+          className="absolute inset-0 flex items-center justify-center pointer-events-none z-20"
+        >
+          <div
+            className={`relative pointer-events-none ${
+              layout === 'pip' && videoAspectRatio ? 'max-w-full max-h-full h-full' : 'w-full h-full'
+            }`}
+            style={layout === 'pip' && videoAspectRatio ? { aspectRatio: `${videoAspectRatio}` } : undefined}
+          >
+            {/* Telemetry Overlay - Top Center */}
+            {showTelemetry && (
+              <div className="absolute top-3 left-1/2 -translate-x-1/2 pointer-events-auto">
+                <TelemetryCard
+                  seiData={seiData}
+                  isLoading={isLoading}
+                  error={error}
+                  speedUnit={speedUnit}
+                  onSpeedUnitToggle={() => setSpeedUnit(prev => prev === 'mph' ? 'kmh' : 'mph')}
+                />
               </div>
-            }>
-              <MapView seiData={seiData} />
-            </Suspense>
+            )}
+
+            {/* Date/Time Overlay - Below Telemetry or Top Center */}
+            {showDateTime && (
+              <div className={`absolute left-1/2 -translate-x-1/2 pointer-events-none ${
+                showTelemetry ? 'top-[95px]' : 'top-3'
+              }`}>
+                <div className="px-2 py-1 rounded-md bg-black/50 backdrop-blur-sm text-white/90 text-xs font-medium">
+                  {(() => {
+                    const realTime = new Date(currentMoment.timestamp.getTime() + localTime * 1000);
+                    const date = realTime.toISOString().split('T')[0];
+                    const time = realTime.toTimeString().split(' ')[0];
+                    return <>{date} &nbsp; {time}</>;
+                  })()}
+                </div>
+              </div>
+            )}
+
+            {/* Map Overlay - Top Right for PiP, Bottom Right for others */}
+            {showMap && (
+              <div className={`absolute w-[180px] h-[180px] rounded-lg overflow-hidden shadow-xl opacity-90 hover:opacity-100 transition-opacity pointer-events-auto ${
+                layout === 'pip' ? 'top-3 right-3' : 'bottom-3 right-3'
+              }`}>
+                <Suspense fallback={
+                  <div className="bg-gray-900 w-full h-full flex items-center justify-center">
+                    <div className="text-gray-500 text-xs">Loading...</div>
+                  </div>
+                }>
+                  <MapView seiData={seiData} />
+                </Suspense>
+              </div>
+            )}
           </div>
-        )}
+        </div>
       </div>
 
       {/* Controls Area - Scrollable if needed */}
