@@ -308,8 +308,9 @@ export function VideoExporter({
     posX += blinkerWidth + gap;
 
     // === Right Column: Steering + Accelerator ===
-    // Steering circle with wheel icon
-    ctx.fillStyle = '#a4a4a4';
+    // Steering circle with wheel icon (blue when autopilot active)
+    const isAutopilotActive = (seiData.autopilot_state ?? 0) > 0;
+    ctx.fillStyle = isAutopilotActive ? '#006deb' : '#a4a4a4';
     ctx.beginPath();
     ctx.arc(posX + circleSize / 2, topCircleY, circleSize / 2, 0, Math.PI * 2);
     ctx.fill();
@@ -375,7 +376,6 @@ export function VideoExporter({
     }
 
     // === Autopilot label ===
-    const isAutopilotActive = (seiData.autopilot_state ?? 0) > 0;
     if (isAutopilotActive) {
       const autopilotLabels: Record<number, string> = { 1: 'Self Driving', 2: 'Autosteer', 3: 'TACC' };
       const label = autopilotLabels[seiData.autopilot_state ?? 0] || '';
