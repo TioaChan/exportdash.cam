@@ -3,7 +3,7 @@
 import { useRef, useEffect, useState, useCallback, lazy, Suspense, ReactNode, useMemo } from 'react';
 import { useSeiData } from '@/hooks/useSeiData';
 import { TelemetryCard } from './TelemetryCard';
-import { VideoSequence, ANGLE_LABELS, ANGLE_ORDER, VideoMoment, TrimPoints, CameraSegment } from '@/types/video';
+import { VideoSequence, ANGLE_LABELS, ANGLE_ORDER, VideoMoment, TrimPoints, CameraSegment, LayoutCameraConfig, DEFAULT_LAYOUT_CONFIG, loadLayoutConfig, saveLayoutConfig } from '@/types/video';
 import { findMomentForTime, toAbsoluteTime } from '@/lib/sequence-detector';
 import {
   IconArrowUp,
@@ -34,8 +34,10 @@ import {
   IconScissors,
   IconWand,
   IconClock,
+  IconSettings2,
 } from '@tabler/icons-react';
 import { VideoExporter } from './VideoExporter';
+import { LayoutConfigPopover } from './LayoutConfigPopover';
 import { TelemetryTimeline } from './TelemetryTimeline';
 import { Tooltip } from './Tooltip';
 
@@ -123,6 +125,20 @@ export function VideoPlayer({
   const [videoAspectRatio, setVideoAspectRatio] = useState<number | null>(null);
   const [isTimelineDragging, setIsTimelineDragging] = useState(false);
 
+  // Layout camera config
+  const [layoutConfig, setLayoutConfig] = useState<LayoutCameraConfig>(DEFAULT_LAYOUT_CONFIG);
+  const [showLayoutConfig, setShowLayoutConfig] = useState(false);
+
+  // Load layout config from localStorage on mount
+  useEffect(() => {
+    setLayoutConfig(loadLayoutConfig());
+  }, []);
+
+  const handleLayoutConfigChange = useCallback((newConfig: LayoutCameraConfig) => {
+    setLayoutConfig(newConfig);
+    saveLayoutConfig(newConfig);
+  }, []);
+
   // Edit mode state
   const [isEditMode, setIsEditMode] = useState(false);
   const [isTrimming, setIsTrimming] = useState(false); // When true, show full timeline for trim adjustment
@@ -158,6 +174,15 @@ export function VideoPlayer({
     currentMomentIndex,
     absoluteTime
   );
+
+  // Map SEI data with event.json GPS fallback
+  const mapSeiData = useMemo(() => {
+    if (seiData?.latitude_deg && seiData?.longitude_deg) return seiData;
+    if (sequence?.event?.est_lat && sequence?.event?.est_lon) {
+      return { ...(seiData || {}), latitude_deg: sequence.event.est_lat, longitude_deg: sequence.event.est_lon } as typeof seiData;
+    }
+    return seiData;
+  }, [seiData, sequence?.event]);
 
   // Reset state when sequence changes
   useEffect(() => {
@@ -624,17 +649,50 @@ export function VideoPlayer({
       );
     }
 
-    // PiP view - main camera with corners
+    // PiP view - main camera with configurable corners
+    // corners: [bottom-left, bottom-center, bottom-right, top-left, top-right]
     if (layout === 'pip') {
-      const pipAngles = ['left_repeater', 'right_repeater', 'back'].filter(
-        a => a !== selectedAngle && availableAngles.includes(a)
-      );
-
+      const corners = layoutConfig.pip.corners;
       const ar = videoAspectRatio || 16 / 9;
+
+      const hasGps = !!(mapSeiData?.latitude_deg && mapSeiData?.longitude_deg);
+
+      // Position classes for each corner slot
+      const cornerPositions = [
+        'absolute bottom-3 left-3',                        // 0: bottom-left
+        'absolute bottom-3 left-1/2 -translate-x-1/2',    // 1: bottom-center
+        'absolute bottom-3 right-3',                       // 2: bottom-right
+        'absolute top-3 left-3',                           // 3: top-left
+        'absolute top-3 right-3',                          // 4: top-right
+      ];
+
+      // Render a single PiP corner element (camera, map, or nothing)
+      const renderPipCorner = (value: string, idx: number) => {
+        if (value === 'none' || value === selectedAngle) return null;
+        const pos = cornerPositions[idx];
+        if (value === 'map') {
+          if (!hasGps) return null;
+          return (
+            <div key={idx} className={`${pos} w-[18%] aspect-square rounded-lg overflow-hidden border border-white/20 shadow-lg pointer-events-auto`}>
+              <Suspense fallback={<div className="bg-gray-900 w-full h-full" />}>
+                <MapView seiData={mapSeiData} />
+              </Suspense>
+            </div>
+          );
+        }
+        if (!availableAngles.includes(value)) return null;
+        return (
+          <div
+            key={idx}
+            className={`${pos} w-[18%] rounded-lg overflow-hidden border border-white/20 shadow-lg pointer-events-none`}
+          >
+            {renderVideo(value, false, 'w-full')}
+          </div>
+        );
+      };
 
       return (
         <div className="relative w-full bg-black flex items-center justify-center aspect-video max-h-full overflow-hidden">
-          {/* Inner wrapper sized to actual video aspect ratio */}
           <div
             className="relative max-w-full max-h-full"
             style={{ aspectRatio: `${ar}` }}
@@ -642,32 +700,8 @@ export function VideoPlayer({
             <div className="w-full h-full">
               {renderVideo(selectedAngle, true, 'w-full h-full')}
             </div>
-            <div className="absolute top-3 right-3 bg-black/60 backdrop-blur-sm rounded px-2 py-1 text-xs font-medium flex items-center gap-1">
-              {ANGLE_ICONS[selectedAngle]} {ANGLE_LABELS[selectedAngle]}
-            </div>
-
-            {/* Corner PiP windows */}
-            <div className="absolute bottom-3 left-3 right-3 flex justify-between pointer-events-none">
-              {pipAngles.slice(0, 2).map((angle) => (
-                <div
-                  key={angle}
-                  className="w-[18%] rounded-lg overflow-hidden border border-white/20 shadow-lg pointer-events-auto cursor-pointer hover:border-blue-400 transition-colors"
-                  onClick={() => handleAngleChange(angle)}
-                >
-                  {renderVideo(angle, false, 'w-full')}
-                </div>
-              ))}
-            </div>
-
-            {/* Optional third PiP in top-left */}
-            {pipAngles[2] && (
-              <div
-                className="absolute top-3 left-3 w-[18%] rounded-lg overflow-hidden border border-white/20 shadow-lg cursor-pointer hover:border-blue-400 transition-colors"
-                onClick={() => handleAngleChange(pipAngles[2])}
-              >
-                {renderVideo(pipAngles[2], false, 'w-full')}
-              </div>
-            )}
+            {/* All 5 PiP corners - each absolutely positioned */}
+            {corners.map((value, idx) => renderPipCorner(value, idx))}
 
             {renderPlayOverlay()}
           </div>
@@ -677,18 +711,18 @@ export function VideoPlayer({
 
     // Triple view - front + left + right in a row
     if (layout === 'triple') {
-      const tripleAngles = ['left_pillar', 'front', 'right_pillar'];
+      const tripleAngles = layoutConfig.triple.cameras;
 
       return (
         <div className="relative w-full bg-black flex items-center justify-center overflow-hidden aspect-video max-h-full">
           <div className="grid grid-cols-3 w-full">
-            {tripleAngles.map((angle) => {
+            {tripleAngles.map((angle, idx) => {
               const isMain = angle === selectedAngle;
               const isAvailable = availableAngles.includes(angle);
 
               return (
                 <div
-                  key={angle}
+                  key={idx}
                   className={`relative overflow-hidden ${
                     isMain ? 'ring-2 ring-inset ring-blue-500' : ''
                   } ${isAvailable ? 'cursor-pointer' : 'opacity-40'}`}
@@ -707,8 +741,8 @@ export function VideoPlayer({
     // All 6 cameras - 2 rows of 3
     if (layout === 'all') {
       const rows = [
-        ['left_repeater', 'left_pillar', 'front'],
-        ['right_repeater', 'right_pillar', 'back'],
+        layoutConfig.all.topRow,
+        layoutConfig.all.bottomRow,
       ];
 
       return (
@@ -716,13 +750,13 @@ export function VideoPlayer({
           <div className="absolute inset-0 flex flex-col gap-1 p-1">
             {rows.map((row, rowIdx) => (
               <div key={rowIdx} className="flex-1 flex gap-1 min-h-0">
-                {row.map((angle) => {
+                {row.map((angle, colIdx) => {
                   const isMain = angle === selectedAngle;
                   const isAvailable = availableAngles.includes(angle);
 
                   return (
                     <div
-                      key={angle}
+                      key={colIdx}
                       className={`relative flex-1 rounded overflow-hidden ${
                         isMain ? 'ring-2 ring-blue-500' : ''
                       } ${isAvailable ? 'cursor-pointer' : 'opacity-40'}`}
@@ -800,8 +834,8 @@ export function VideoPlayer({
               </div>
             )}
 
-            {/* Map Overlay - Top Right for PiP, Bottom Right for others */}
-            {showMap && (
+            {/* Map Overlay - skip if map is already in a PiP corner */}
+            {showMap && !(layout === 'pip' && layoutConfig.pip.corners.includes('map')) && (
               <div className={`absolute w-[180px] h-[180px] rounded-lg overflow-hidden shadow-xl opacity-90 hover:opacity-100 transition-opacity pointer-events-auto ${
                 layout === 'pip' ? 'top-3 right-3' : 'bottom-3 right-3'
               }`}>
@@ -810,7 +844,7 @@ export function VideoPlayer({
                     <div className="text-gray-500 text-xs">Loading...</div>
                   </div>
                 }>
-                  <MapView seiData={seiData} />
+                  <MapView seiData={mapSeiData} />
                 </Suspense>
               </div>
             )}
@@ -935,63 +969,61 @@ export function VideoPlayer({
       {/* Control Bar: Camera + Layout + Date + Toggles */}
       <div className="bg-gray-800/50 rounded-xl px-3 py-2">
         <div className="flex items-center gap-3 flex-wrap">
-          {/* Camera buttons (for single/pip views OR edit mode for camera track) */}
-          {(layout === 'single' || layout === 'pip' || isEditMode || hasCustomCameraTrack) && (
-            <div className="flex items-center gap-1">
-              <span className="text-[10px] text-gray-500 mr-1">Cameras:</span>
-              {ANGLE_ORDER.map((angle) => {
-                const isAvailable = availableAngles.includes(angle);
-                const isActive = selectedAngle === angle && !useCustomCameraTrack;
+          {/* Camera buttons — always visible, disabled for triple/all unless in edit mode */}
+          <div className="flex items-center gap-1">
+            <span className="text-[10px] text-gray-500 mr-1">Cameras:</span>
+            {ANGLE_ORDER.map((angle) => {
+              const isAvailable = availableAngles.includes(angle);
+              const canSelect = layout === 'single' || layout === 'pip' || isEditMode || hasCustomCameraTrack;
+              const isDisabled = !isAvailable || !canSelect;
+              const isActive = selectedAngle === angle && !useCustomCameraTrack && canSelect;
 
-                return (
-                  <Tooltip key={angle} content={ANGLE_LABELS[angle]} position="top">
-                    <button
-                      disabled={!isAvailable}
-                      onClick={() => {
-                        if (isAvailable) {
-                          setUseCustomCameraTrack(false);
-                          handleAngleChange(angle);
-                        }
-                      }}
-                      className={`p-1.5 rounded text-xs font-medium transition-all ${
-                        isActive
-                          ? isEditMode ? 'bg-purple-600 text-white' : 'bg-blue-600 text-white'
-                          : isAvailable
-                          ? 'bg-gray-700 text-gray-300 hover:bg-gray-600'
-                          : 'bg-gray-800/50 text-gray-600 cursor-not-allowed'
-                      }`}
-                    >
-                      {ANGLE_ICONS[angle]}
-                    </button>
-                  </Tooltip>
-                );
-              })}
-              {/* Custom camera track button */}
-              {hasCustomCameraTrack && (
-                <Tooltip content="Use custom camera track" position="top">
+              return (
+                <Tooltip key={angle} content={ANGLE_LABELS[angle]} position="top">
                   <button
-                    onClick={() => setUseCustomCameraTrack(true)}
-                    className={`px-2 py-1 rounded text-xs font-medium transition-all flex items-center gap-1 ${
-                      useCustomCameraTrack
-                        ? 'bg-gradient-to-r from-purple-600 to-pink-600 text-white'
+                    disabled={isDisabled}
+                    onClick={() => {
+                      if (!isDisabled) {
+                        setUseCustomCameraTrack(false);
+                        handleAngleChange(angle);
+                      }
+                    }}
+                    className={`p-1.5 rounded text-xs font-medium transition-all ${
+                      isActive
+                        ? isEditMode ? 'bg-purple-600 text-white' : 'bg-blue-600 text-white'
+                        : isDisabled
+                        ? 'bg-gray-800/50 text-gray-600 cursor-not-allowed'
                         : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
                     }`}
                   >
-                    <IconWand size={14} />
-                    <span>Custom</span>
+                    {ANGLE_ICONS[angle]}
                   </button>
                 </Tooltip>
-              )}
-            </div>
-          )}
+              );
+            })}
+            {/* Custom camera track button */}
+            {hasCustomCameraTrack && (
+              <Tooltip content="Use custom camera track" position="top">
+                <button
+                  onClick={() => setUseCustomCameraTrack(true)}
+                  className={`px-2 py-1 rounded text-xs font-medium transition-all flex items-center gap-1 ${
+                    useCustomCameraTrack
+                      ? 'bg-gradient-to-r from-purple-600 to-pink-600 text-white'
+                      : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                  }`}
+                >
+                  <IconWand size={14} />
+                  <span>Custom</span>
+                </button>
+              </Tooltip>
+            )}
+          </div>
 
           {/* Divider */}
-          {(layout === 'single' || layout === 'pip' || isEditMode || hasCustomCameraTrack) && (
-            <div className="w-px h-5 bg-gray-700" />
-          )}
+          <div className="w-px h-5 bg-gray-700" />
 
           {/* Layout buttons */}
-          <div className="flex items-center gap-1">
+          <div className="flex items-center gap-1 relative">
             <span className="text-[10px] text-gray-500 mr-1">Layout:</span>
             {LAYOUTS.map((l) => (
               <Tooltip key={l.id} content={l.label} position="top">
@@ -1007,6 +1039,28 @@ export function VideoPlayer({
                 </button>
               </Tooltip>
             ))}
+            {layout !== 'single' && (
+              <Tooltip content="Configure layout" position="top">
+                <button
+                  onClick={() => setShowLayoutConfig(prev => !prev)}
+                  className={`p-1.5 rounded text-xs font-medium transition-all ${
+                    showLayoutConfig
+                      ? 'bg-blue-600 text-white'
+                      : 'bg-gray-700 text-gray-400 hover:bg-gray-600'
+                  }`}
+                >
+                  <IconSettings2 size={14} />
+                </button>
+              </Tooltip>
+            )}
+            {showLayoutConfig && layout !== 'single' && (
+              <LayoutConfigPopover
+                layout={layout}
+                config={layoutConfig}
+                onChange={handleLayoutConfigChange}
+                onClose={() => setShowLayoutConfig(false)}
+              />
+            )}
           </div>
 
           {/* Divider */}
@@ -1110,6 +1164,7 @@ export function VideoPlayer({
               showDateTime={showDateTime}
               showMap={showMap}
               layout={layout}
+              layoutConfig={layoutConfig}
             />
 
             {/* Divider */}
