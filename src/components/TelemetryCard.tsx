@@ -101,7 +101,7 @@ export function TelemetryCard({
 
         {/* Column 2: Steering + Accelerator */}
         <div className="telemetry-column">
-          <div className="telemetry-circle telemetry-steering">
+          <div className={`telemetry-circle telemetry-steering ${isAutopilotActive ? 'autopilot' : ''}`}>
             <Image
               src="/wheel.svg"
               alt="Steering"
@@ -164,9 +164,17 @@ export function TelemetryCard({
           background: #ff4444;
         }
 
+        .telemetry-steering.autopilot {
+          background: #006deb;
+        }
+
         .telemetry-steering :global(.wheel-icon) {
           filter: brightness(0.5);
           transition: transform 0.1s ease-out;
+        }
+
+        .telemetry-steering.autopilot :global(.wheel-icon) {
+          filter: brightness(0) invert(1);
         }
 
         .telemetry-accelerator {
