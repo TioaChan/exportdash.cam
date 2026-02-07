@@ -103,6 +103,54 @@ export const ANGLE_LABELS: Record<string, string> = {
 
 export const ANGLE_ORDER = ['front', 'left_repeater', 'right_repeater', 'back', 'left_pillar', 'right_pillar'];
 
+/** Camera layout configuration for multi-camera views */
+export interface LayoutCameraConfig {
+  pip: { corners: [string, string, string, string, string] }; // bottom-left, bottom-center, bottom-right, top-left, top-right
+  triple: { cameras: [string, string, string] };               // left, center, right
+  all: { topRow: [string, string, string]; bottomRow: [string, string, string] };
+}
+
+/** Special PiP corner values (besides camera angles) */
+export const PIP_SPECIAL_OPTIONS = ['none', 'map'] as const;
+
+export const DEFAULT_LAYOUT_CONFIG: LayoutCameraConfig = {
+  pip: { corners: ['left_repeater', 'none', 'right_repeater', 'back', 'map'] },
+  triple: { cameras: ['left_pillar', 'front', 'right_pillar'] },
+  all: {
+    topRow: ['left_repeater', 'left_pillar', 'front'],
+    bottomRow: ['right_repeater', 'right_pillar', 'back'],
+  },
+};
+
+const LAYOUT_CONFIG_KEY = 'tesla-cam-layout-config';
+
+export function loadLayoutConfig(): LayoutCameraConfig {
+  try {
+    const stored = localStorage.getItem(LAYOUT_CONFIG_KEY);
+    if (!stored) return { ...DEFAULT_LAYOUT_CONFIG };
+    const parsed = JSON.parse(stored);
+    // Merge with defaults to handle missing/corrupt fields
+    return {
+      pip: { corners: parsed?.pip?.corners?.length === 5 ? parsed.pip.corners : [...DEFAULT_LAYOUT_CONFIG.pip.corners] },
+      triple: { cameras: parsed?.triple?.cameras?.length === 3 ? parsed.triple.cameras : [...DEFAULT_LAYOUT_CONFIG.triple.cameras] },
+      all: {
+        topRow: parsed?.all?.topRow?.length === 3 ? parsed.all.topRow : [...DEFAULT_LAYOUT_CONFIG.all.topRow],
+        bottomRow: parsed?.all?.bottomRow?.length === 3 ? parsed.all.bottomRow : [...DEFAULT_LAYOUT_CONFIG.all.bottomRow],
+      },
+    };
+  } catch {
+    return { ...DEFAULT_LAYOUT_CONFIG };
+  }
+}
+
+export function saveLayoutConfig(config: LayoutCameraConfig): void {
+  try {
+    localStorage.setItem(LAYOUT_CONFIG_KEY, JSON.stringify(config));
+  } catch {
+    // Silently fail if localStorage is full or unavailable
+  }
+}
+
 /** Trim points for video export */
 export interface TrimPoints {
   inPoint: number;   // Start time in seconds

@@ -4,7 +4,7 @@ import { useState, useRef, useCallback, useEffect } from 'react';
 import { IconDownload, IconPlayerStop, IconLoader2, IconCheck } from '@tabler/icons-react';
 import { SeiData, SeiWithFrameIndex } from '@/lib/dashcam-mp4';
 import { Muxer, ArrayBufferTarget } from 'mp4-muxer';
-import { VideoSequence, TrimPoints, CameraSegment, formatDuration } from '@/types/video';
+import { VideoSequence, TrimPoints, CameraSegment, formatDuration, LayoutCameraConfig, DEFAULT_LAYOUT_CONFIG } from '@/types/video';
 import { Tooltip } from './Tooltip';
 
 type LayoutType = 'single' | 'pip' | 'triple' | 'all';
@@ -22,6 +22,7 @@ interface VideoExporterProps {
   showDateTime?: boolean;
   showMap?: boolean;
   layout?: LayoutType;
+  layoutConfig?: LayoutCameraConfig;
 }
 
 // Map tile cache
@@ -108,6 +109,7 @@ export function VideoExporter({
   showDateTime = true,
   showMap = true,
   layout = 'single',
+  layoutConfig = DEFAULT_LAYOUT_CONFIG,
 }: VideoExporterProps) {
   const [isExporting, setIsExporting] = useState(false);
   const [isComplete, setIsComplete] = useState(false);
@@ -453,16 +455,16 @@ export function VideoExporter({
     seiData: SeiData | null,
     width: number,
     height: number,
-    position: 'top-right' | 'bottom-right' = 'bottom-right'
+    position: 'top-right' | 'bottom-right' | { x: number; y: number; size: number } = 'bottom-right'
   ) => {
     if (!seiData?.latitude_deg || !seiData?.longitude_deg) return;
     if (seiData.latitude_deg === 0 && seiData.longitude_deg === 0) return;
 
     const scale = Math.min(width / 1280, height / 720);
-    const mapSize = 160 * scale;
+    const mapSize = typeof position === 'object' ? position.size : 160 * scale;
     const padding = 12 * scale;
-    const x = width - mapSize - padding;
-    const y = position === 'top-right' ? padding : height - mapSize - padding;
+    const x = typeof position === 'object' ? position.x : width - mapSize - padding;
+    const y = typeof position === 'object' ? position.y : position === 'top-right' ? padding : height - mapSize - padding;
 
     const lat = seiData.latitude_deg;
     const lng = seiData.longitude_deg;
@@ -612,18 +614,18 @@ export function VideoExporter({
 
       const maxDimension = 1920;
 
-      // Determine export layout angles
-      const tripleAngles = ['left_pillar', 'front', 'right_pillar'];
-      const pipAngles = ['left_repeater', 'right_repeater', 'back'].filter(
-        a => a !== selectedAngle
+      // Determine export layout angles from config
+      const tripleAngles = [...layoutConfig.triple.cameras];
+      const pipAngles = layoutConfig.pip.corners.filter(
+        a => a !== selectedAngle && a !== 'none' && a !== 'map'
       );
 
       let width: number;
       let height: number;
 
       if (layout === 'triple') {
-        // Load a pillar video to get its dimensions
-        const pillarVideo = sequence.moments[0].videos.find(v => v.angle === 'left_pillar');
+        // Load a side video to get its dimensions
+        const pillarVideo = sequence.moments[0].videos.find(v => v.angle === tripleAngles[0]);
         let pillarW = srcWidth;
         let pillarH = srcHeight;
         if (pillarVideo) {
@@ -763,7 +765,7 @@ export function VideoExporter({
 
       // Prepare extra video elements for multi-angle layouts
       const layoutAngles = layout === 'triple' ? tripleAngles
-        : layout === 'pip' ? pipAngles.slice(0, 3)
+        : layout === 'pip' ? pipAngles
         : [];
 
       for (const angle of layoutAngles) {
@@ -841,8 +843,8 @@ export function VideoExporter({
           }
           await seekVideo(localTime);
 
-          // Load and seek PiP angles
-          for (const angle of pipAngles.slice(0, 3)) {
+          // Load and seek PiP camera angles
+          for (const angle of pipAngles) {
             const ev = extraVideos[angle];
             if (!ev) continue;
             const video = moment.videos.find(v => v.angle === angle);
@@ -858,49 +860,75 @@ export function VideoExporter({
           // Draw main video
           ctx.drawImage(tempVideo, 0, 0, width, height);
 
-          // Draw PiP windows (bottom corners + optional top-left)
+          // Draw PiP corners matching the 5-position layout config
+          // corners: [bottom-left, bottom-center, bottom-right, top-left, top-right]
+          const allCorners = layoutConfig.pip.corners;
           const pipW = Math.floor(width * 0.18);
           const pipMargin = Math.floor(width * 0.02);
-          const activePips = pipAngles.slice(0, 3).filter(a => moment.videos.some(v => v.angle === a));
 
-          // Bottom-left
-          if (activePips[0] && extraVideos[activePips[0]]) {
-            const ev = extraVideos[activePips[0]];
+          const drawPipAt = (angle: string, px: number, py: number) => {
+            const ev = extraVideos[angle];
+            if (!ev || !moment.videos.some(v => v.angle === angle)) return;
             const srcW = ev.el.videoWidth || 1;
             const srcH = ev.el.videoHeight || 1;
             const pipH = Math.floor(pipW * (srcH / srcW));
-            const px = pipMargin;
-            const py = height - pipH - pipMargin;
+            ctx.drawImage(ev.el, px, py, pipW, pipH);
             ctx.strokeStyle = 'rgba(255,255,255,0.2)';
             ctx.lineWidth = 1;
-            ctx.drawImage(ev.el, px, py, pipW, pipH);
             ctx.strokeRect(px, py, pipW, pipH);
+          };
+
+          // Compute pip height for positioning (use first available pip video)
+          let defaultPipH = Math.floor(pipW * 0.75); // fallback 4:3
+          for (const angle of pipAngles) {
+            const ev = extraVideos[angle];
+            if (ev?.el.videoWidth) {
+              defaultPipH = Math.floor(pipW * (ev.el.videoHeight / ev.el.videoWidth));
+              break;
+            }
           }
-          // Bottom-right
-          if (activePips[1] && extraVideos[activePips[1]]) {
-            const ev = extraVideos[activePips[1]];
-            const srcW = ev.el.videoWidth || 1;
-            const srcH = ev.el.videoHeight || 1;
-            const pipH = Math.floor(pipW * (srcH / srcW));
-            const px = width - pipW - pipMargin;
-            const py = height - pipH - pipMargin;
-            ctx.drawImage(ev.el, px, py, pipW, pipH);
-            ctx.strokeStyle = 'rgba(255,255,255,0.2)';
-            ctx.lineWidth = 1;
-            ctx.strokeRect(px, py, pipW, pipH);
+
+          // Bottom-left [0]
+          if (allCorners[0] !== 'none' && allCorners[0] !== 'map' && allCorners[0] !== selectedAngle) {
+            drawPipAt(allCorners[0], pipMargin, height - defaultPipH - pipMargin);
           }
-          // Top-left (third pip)
-          if (activePips[2] && extraVideos[activePips[2]]) {
-            const ev = extraVideos[activePips[2]];
-            const srcW = ev.el.videoWidth || 1;
-            const srcH = ev.el.videoHeight || 1;
-            const pipH = Math.floor(pipW * (srcH / srcW));
-            const px = pipMargin;
-            const py = pipMargin;
-            ctx.drawImage(ev.el, px, py, pipW, pipH);
-            ctx.strokeStyle = 'rgba(255,255,255,0.2)';
-            ctx.lineWidth = 1;
-            ctx.strokeRect(px, py, pipW, pipH);
+          // Bottom-center [1]
+          if (allCorners[1] !== 'none' && allCorners[1] !== 'map' && allCorners[1] !== selectedAngle) {
+            drawPipAt(allCorners[1], Math.floor((width - pipW) / 2), height - defaultPipH - pipMargin);
+          }
+          // Bottom-right [2]
+          if (allCorners[2] !== 'none' && allCorners[2] !== 'map' && allCorners[2] !== selectedAngle) {
+            drawPipAt(allCorners[2], width - pipW - pipMargin, height - defaultPipH - pipMargin);
+          }
+          // Top-left [3]
+          if (allCorners[3] !== 'none' && allCorners[3] !== 'map' && allCorners[3] !== selectedAngle) {
+            drawPipAt(allCorners[3], pipMargin, pipMargin);
+          }
+          // Top-right [4]
+          if (allCorners[4] !== 'none' && allCorners[4] !== 'map' && allCorners[4] !== selectedAngle) {
+            drawPipAt(allCorners[4], width - pipW - pipMargin, pipMargin);
+          }
+
+          // Draw map at corners configured as 'map'
+          // corner positions: [bottom-left, bottom-center, bottom-right, top-left, top-right]
+          const mapCornerPositions = [
+            { x: pipMargin, y: height - pipW - pipMargin },                         // bottom-left
+            { x: Math.floor((width - pipW) / 2), y: height - pipW - pipMargin },    // bottom-center
+            { x: width - pipW - pipMargin, y: height - pipW - pipMargin },           // bottom-right
+            { x: pipMargin, y: pipMargin },                                          // top-left
+            { x: width - pipW - pipMargin, y: pipMargin },                           // top-right
+          ];
+          const rawPipSei = getSeiForTime(absoluteTime);
+          const pipMapSeiData = rawPipSei?.latitude_deg && rawPipSei?.longitude_deg
+            ? rawPipSei
+            : sequence.event?.est_lat && sequence.event?.est_lon
+              ? { ...(rawPipSei || {}), latitude_deg: sequence.event.est_lat, longitude_deg: sequence.event.est_lon } as typeof rawPipSei
+              : rawPipSei;
+          for (let ci = 0; ci < allCorners.length; ci++) {
+            if (allCorners[ci] === 'map') {
+              const mp = mapCornerPositions[ci];
+              await drawMiniMap(ctx, pipMapSeiData, width, height, { x: mp.x, y: mp.y, size: pipW });
+            }
           }
 
         } else {
@@ -918,8 +946,13 @@ export function VideoExporter({
           ctx.drawImage(tempVideo, 0, 0, width, height);
         }
 
-        // Get SEI data for this absolute time
-        const seiData = getSeiForTime(absoluteTime);
+        // Get SEI data for this absolute time, with event.json GPS fallback
+        const rawSeiData = getSeiForTime(absoluteTime);
+        const seiData = rawSeiData?.latitude_deg && rawSeiData?.longitude_deg
+          ? rawSeiData
+          : sequence.event?.est_lat && sequence.event?.est_lon
+            ? { ...(rawSeiData || {}), latitude_deg: sequence.event.est_lat, longitude_deg: sequence.event.est_lon } as typeof rawSeiData
+            : rawSeiData;
 
         // Draw overlays based on toggle states
         if (showTelemetry) {
@@ -931,7 +964,7 @@ export function VideoExporter({
           const dynamicTime = realTime.toTimeString().split(' ')[0];
           drawDateTime(ctx, width, height, dynamicDate, dynamicTime, showTelemetry);
         }
-        if (showMap) {
+        if (showMap && !(layout === 'pip' && layoutConfig.pip.corners.includes('map'))) {
           await drawMiniMap(ctx, seiData, width, height, layout === 'pip' ? 'top-right' : 'bottom-right');
         }
 
@@ -996,7 +1029,7 @@ export function VideoExporter({
       }
       tempVideo.src = '';
     }
-  }, [sequence, selectedAngle, allSeiMessages, fps, speedUnit, getSeiForTime, getAngleForTime, trimPoints, showTelemetry, showDateTime, showMap, layout]);
+  }, [sequence, selectedAngle, allSeiMessages, fps, speedUnit, getSeiForTime, getAngleForTime, trimPoints, showTelemetry, showDateTime, showMap, layout, layoutConfig]);
 
   const stopExport = useCallback(() => {
     abortRef.current = true;
