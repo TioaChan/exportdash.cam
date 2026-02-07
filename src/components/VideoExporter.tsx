@@ -794,7 +794,7 @@ export function VideoExporter({
         const { clipIdx, localTime } = clipInfo;
         const moment = sequence.moments[clipIdx];
 
-        setStatus(`Processing: ${formatDuration(absoluteTime)} / ${formatDuration(exportEnd)}`);
+        setStatus(`Processing: ${formatDuration(absoluteTime - exportStart)} / ${formatDuration(exportDuration)}`);
 
         if (layout === 'triple') {
           // Load and seek all 3 angles

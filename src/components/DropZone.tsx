@@ -35,7 +35,8 @@ export function DropZone({ onFilesAdded, hasVideos }: DropZoneProps) {
           const file = await new Promise<File>((resolve, reject) => {
             fileEntry.file(resolve, reject);
           });
-          if (file.name.toLowerCase().endsWith('.mp4')) {
+          const name = file.name.toLowerCase();
+          if (name.endsWith('.mp4') || name === 'event.json') {
             files.push(file);
           }
         } else if (entry.isDirectory) {
@@ -61,9 +62,10 @@ export function DropZone({ onFilesAdded, hasVideos }: DropZoneProps) {
         await Promise.all(entries.map(processEntry));
       } else {
         // Fallback for browsers without webkitGetAsEntry
-        const droppedFiles = Array.from(e.dataTransfer.files).filter((f) =>
-          f.name.toLowerCase().endsWith('.mp4')
-        );
+        const droppedFiles = Array.from(e.dataTransfer.files).filter((f) => {
+          const name = f.name.toLowerCase();
+          return name.endsWith('.mp4') || name === 'event.json';
+        });
         files.push(...droppedFiles);
       }
 
@@ -76,9 +78,10 @@ export function DropZone({ onFilesAdded, hasVideos }: DropZoneProps) {
 
   const handleFileInput = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
-      const files = Array.from(e.target.files || []).filter((f) =>
-        f.name.toLowerCase().endsWith('.mp4')
-      );
+      const files = Array.from(e.target.files || []).filter((f) => {
+        const name = f.name.toLowerCase();
+        return name.endsWith('.mp4') || name === 'event.json';
+      });
       if (files.length > 0) {
         onFilesAdded(files);
       }
@@ -100,7 +103,7 @@ export function DropZone({ onFilesAdded, hasVideos }: DropZoneProps) {
           <span className="text-sm">Drop more videos or click to add</span>
           <input
             type="file"
-            accept="video/mp4"
+            accept="video/mp4,application/json"
             multiple
             onChange={handleFileInput}
             className="hidden"
@@ -183,7 +186,7 @@ export function DropZone({ onFilesAdded, hasVideos }: DropZoneProps) {
           <span>Browse Files</span>
           <input
             type="file"
-            accept="video/mp4"
+            accept="video/mp4,application/json"
             multiple
             onChange={handleFileInput}
             className="hidden"

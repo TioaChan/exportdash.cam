@@ -2,7 +2,7 @@
 
 import { useMemo, useRef, useCallback, useEffect, useState } from 'react';
 import { SeiWithFrameIndex } from '@/lib/dashcam-mp4';
-import { TrimPoints, CameraSegment, ANGLE_COLORS, ANGLE_LABELS } from '@/types/video';
+import { TrimPoints, CameraSegment, ANGLE_COLORS, ANGLE_LABELS, TeslaEvent } from '@/types/video';
 import { Tooltip } from './Tooltip';
 
 interface TelemetryTimelineProps {
@@ -13,6 +13,8 @@ interface TelemetryTimelineProps {
   onSeek: (time: number) => void;
   onDraggingChange?: (isDragging: boolean) => void;
   clipBoundaries?: number[];  // Offset times where each clip starts (for multi-clip sequences)
+  event?: TeslaEvent;
+  sequenceStartTime?: Date;
   // Edit mode props
   isEditMode?: boolean;
   isTrimming?: boolean;  // When true, show full timeline for trimming
@@ -47,6 +49,8 @@ export function TelemetryTimeline({
   onSeek,
   onDraggingChange,
   clipBoundaries = [],
+  event,
+  sequenceStartTime,
   isEditMode = false,
   isTrimming = false,
   onTrimmingChange,
@@ -174,6 +178,16 @@ export function TelemetryTimeline({
   const [draggingSegmentBoundary, setDraggingSegmentBoundary] = useState<number | null>(null);
   const [draggingAngle, setDraggingAngle] = useState<string | null>(null); // For drag-drop from palette
   const [dragPosition, setDragPosition] = useState<{ x: number; y: number } | null>(null); // Mouse position for drag ghost
+
+  // Calculate event position in absolute time
+  const eventAbsoluteTime = useMemo(() => {
+    if (!event || !sequenceStartTime) return null;
+    const offsetSeconds = (event.timestamp.getTime() - sequenceStartTime.getTime()) / 1000;
+    if (offsetSeconds < 0 || offsetSeconds > duration) return null;
+    return offsetSeconds;
+  }, [event, sequenceStartTime, duration]);
+
+  const [showEventTooltip, setShowEventTooltip] = useState(false);
 
   // Notify parent when dragging state changes
   useEffect(() => {
@@ -462,7 +476,7 @@ export function TelemetryTimeline({
     };
   }, [draggingAngle]);
 
-  if (allSeiMessages.length === 0 || duration <= 0) {
+  if (duration <= 0) {
     return null;
   }
 
@@ -557,6 +571,12 @@ export function TelemetryTimeline({
           )}
 
           {/* Track legend */}
+          {event && (
+            <div className="flex items-center gap-1">
+              <div className="w-2 h-2 rotate-45 bg-orange-500" />
+              <span className="text-[10px] text-orange-400 font-medium">{event.reasonLabel}</span>
+            </div>
+          )}
           {tracks.map((track) => (
             <div key={track.id} className="flex items-center gap-1">
               <div className="w-2 h-2 rounded-full" style={{ backgroundColor: track.color }} />
@@ -576,7 +596,7 @@ export function TelemetryTimeline({
       {/* Main Timeline */}
       <div
         ref={timelineRef}
-        className={`relative select-none ${isDragging || draggingTrimHandle ? 'cursor-grabbing' : 'cursor-pointer'}`}
+        className={`relative select-none min-h-[60px] rounded bg-gray-700/30 ${isDragging || draggingTrimHandle ? 'cursor-grabbing' : 'cursor-pointer'}`}
         onMouseDown={handleMouseDown}
         onTouchStart={handleTouchStart}
       >
@@ -595,6 +615,40 @@ export function TelemetryTimeline({
             />
           );
         })}
+
+        {/* Event marker */}
+        {eventAbsoluteTime !== null && eventAbsoluteTime >= viewStart && eventAbsoluteTime <= viewEnd && (
+          <div
+            className="absolute top-0 bottom-0 z-[6] group"
+            style={{ left: `${timeToPosition(eventAbsoluteTime)}%` }}
+            onMouseEnter={() => setShowEventTooltip(true)}
+            onMouseLeave={() => setShowEventTooltip(false)}
+          >
+            {/* Vertical line */}
+            <div className="absolute top-0 bottom-0 w-0.5 bg-orange-500 -translate-x-1/2 pointer-events-none" />
+            {/* Diamond marker */}
+            <div className="absolute -top-2 left-1/2 -translate-x-1/2 w-4 h-4 pointer-events-auto cursor-default">
+              <div className="w-3 h-3 bg-orange-500 rotate-45 transform mx-auto border border-orange-300 shadow-lg shadow-orange-500/30" />
+            </div>
+            {/* Tooltip */}
+            {showEventTooltip && event && (
+              <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 pointer-events-none z-[20]">
+                <div className="bg-gray-900 border border-orange-500/40 rounded-lg px-3 py-2 text-xs shadow-xl whitespace-nowrap">
+                  <div className="font-semibold text-orange-400">{event.reasonLabel}</div>
+                  {(event.city || event.street) && (
+                    <div className="text-gray-400 mt-0.5">
+                      {[event.street, event.city].filter(Boolean).join(', ')}
+                    </div>
+                  )}
+                  <div className="text-gray-500 mt-0.5 text-[10px]">
+                    {event.timestamp.toLocaleTimeString()}
+                  </div>
+                </div>
+                <div className="absolute top-full left-1/2 -translate-x-1/2 w-2 h-2 bg-gray-900 border-r border-b border-orange-500/40 rotate-45 -mt-1" />
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Time interval lines */}
         {timeMarkers.slice(1, -1).map((time) => (
