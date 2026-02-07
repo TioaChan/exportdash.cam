@@ -30,11 +30,11 @@ export default function Home() {
     });
 
     try {
-      // Process files into moments
-      const moments = await processFilesToMoments(newFiles, setProcessingProgress);
+      // Process files into moments (also parses event.json files)
+      const { moments, events } = await processFilesToMoments(newFiles, setProcessingProgress);
 
-      // Detect sequences from moments
-      const detectedSequences = detectSequences(moments);
+      // Detect sequences from moments, matching events to sequences
+      const detectedSequences = detectSequences(moments, events);
 
       // Update state
       setSequences(detectedSequences);

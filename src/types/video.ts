@@ -51,6 +51,44 @@ export interface VideoSequence {
 
   // Playback mapping: cumulative durations for seeking
   momentOffsets: number[];       // Start time offset for each moment
+
+  // Optional event data from event.json
+  event?: TeslaEvent;
+}
+
+/** Tesla event data from event.json */
+export interface TeslaEvent {
+  timestamp: Date;
+  city?: string;
+  street?: string;
+  est_lat?: number;
+  est_lon?: number;
+  reason: string;
+  reasonLabel: string;
+  camera?: string;
+}
+
+/** Human-readable labels for Tesla event reasons */
+export const REASON_LABELS: Record<string, string> = {
+  user_interaction_dashcam_multifunction_selected: 'Manual Save',
+  user_interaction_dashcam_icon_tapped: 'Manual Save',
+  user_interaction_honk: 'Honk Save',
+  sentry_aware_object_detection: 'Sentry: Object Detected',
+  sentry_aware_accel: 'Sentry: Acceleration',
+  sentry_aware_intrusion: 'Sentry: Intrusion',
+  sentry_aware_proximity: 'Sentry: Proximity',
+  sentry_ion: 'Sentry Mode',
+  sentry_ioff: 'Sentry Off',
+  dashcam_clip_request: 'Dashcam Clip',
+  emergency_braking: 'Emergency Braking',
+  forward_collision_warning: 'Forward Collision Warning',
+  auto_emergency_braking: 'Auto Emergency Braking',
+  ap_forward_collision: 'Autopilot: Forward Collision',
+};
+
+/** Get human-readable label for an event reason */
+export function getReasonLabel(reason: string): string {
+  return REASON_LABELS[reason] || reason.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
 }
 
 /** Angle constants and utilities */

@@ -11,10 +11,12 @@ import {
   VideoSequence,
   CameraVideo,
   ProcessingProgress,
+  TeslaEvent,
   parseAngle,
   parseTimestamp,
   formatDuration,
   formatFileSize,
+  getReasonLabel,
   ANGLE_LABELS,
   ANGLE_ORDER,
 } from '@/types/video';
@@ -43,24 +45,69 @@ async function getVideoDuration(file: File): Promise<number> {
   });
 }
 
+/** Parse an event.json file into a TeslaEvent */
+async function parseEventJson(file: File): Promise<TeslaEvent | null> {
+  try {
+    const text = await file.text();
+    const data = JSON.parse(text);
+    if (!data.timestamp || !data.reason) return null;
+
+    // Parse timestamp: "2026-02-07T17:36:02" (local time, no timezone)
+    const ts = new Date(data.timestamp);
+    if (isNaN(ts.getTime())) return null;
+
+    return {
+      timestamp: ts,
+      city: data.city || undefined,
+      street: data.street || undefined,
+      est_lat: data.est_lat ? parseFloat(data.est_lat) : undefined,
+      est_lon: data.est_lon ? parseFloat(data.est_lon) : undefined,
+      reason: data.reason,
+      reasonLabel: getReasonLabel(data.reason),
+      camera: data.camera || undefined,
+    };
+  } catch {
+    return null;
+  }
+}
+
 /**
- * Process raw video files into VideoMoments grouped by timestamp
+ * Process raw video files into VideoMoments grouped by timestamp.
+ * Also parses any event.json files found alongside the videos.
  */
 export async function processFilesToMoments(
   files: File[],
   onProgress?: (progress: ProcessingProgress) => void
-): Promise<VideoMoment[]> {
-  // Group files by timestamp
+): Promise<{ moments: VideoMoment[]; events: TeslaEvent[] }> {
+  // Separate JSON files from MP4 files
+  const videoFiles: File[] = [];
+  const jsonFiles: File[] = [];
+  for (const file of files) {
+    if (file.name.toLowerCase() === 'event.json') {
+      jsonFiles.push(file);
+    } else {
+      videoFiles.push(file);
+    }
+  }
+
+  // Parse event.json files
+  const events: TeslaEvent[] = [];
+  for (const jsonFile of jsonFiles) {
+    const event = await parseEventJson(jsonFile);
+    if (event) events.push(event);
+  }
+
+  // Group video files by timestamp
   const groups: Record<string, { file: File; angle: string | null; timestamp: Date | null }[]> = {};
 
   onProgress?.({
     stage: 'scanning',
     current: 0,
-    total: files.length,
+    total: videoFiles.length,
     message: 'Scanning files...',
   });
 
-  for (const file of files) {
+  for (const file of videoFiles) {
     const timestamp = parseTimestamp(file.name);
     const key = timestamp
       ? timestamp.toISOString()
@@ -91,7 +138,7 @@ export async function processFilesToMoments(
         onProgress?.({
           stage: 'metadata',
           current: processedCount,
-          total: files.length,
+          total: videoFiles.length,
           message: `Processing ${file.name}...`,
         });
 
@@ -138,12 +185,12 @@ export async function processFilesToMoments(
 
   onProgress?.({
     stage: 'ready',
-    current: files.length,
-    total: files.length,
+    current: videoFiles.length,
+    total: videoFiles.length,
     message: 'Ready',
   });
 
-  return moments;
+  return { moments, events };
 }
 
 /**
@@ -155,7 +202,7 @@ export async function processFilesToMoments(
  * - Clip 3: 10:32:00 (60s duration) ← 0s gap after Clip 2 ends, merge
  * - Clip 4: 10:45:00 (60s duration) ← 12min gap, new sequence
  */
-export function detectSequences(moments: VideoMoment[]): VideoSequence[] {
+export function detectSequences(moments: VideoMoment[], events: TeslaEvent[] = []): VideoSequence[] {
   if (moments.length === 0) return [];
 
   const sequences: VideoSequence[] = [];
@@ -183,6 +230,19 @@ export function detectSequences(moments: VideoMoment[]): VideoSequence[] {
   // Don't forget the last sequence
   if (currentSequenceMoments.length > 0) {
     sequences.push(createSequence(currentSequenceMoments));
+  }
+
+  // Match events to sequences by timestamp overlap
+  for (const event of events) {
+    const eventTime = event.timestamp.getTime();
+    for (const seq of sequences) {
+      const seqStart = seq.startTime.getTime();
+      const seqEnd = seq.endTime.getTime();
+      if (eventTime >= seqStart && eventTime <= seqEnd) {
+        seq.event = event;
+        break;
+      }
+    }
   }
 
   return sequences;

@@ -1217,7 +1217,7 @@ export function VideoPlayer({
       </div>
 
         {/* Telemetry Timeline */}
-        {allSeiMessages.length > 0 && (
+        {totalDuration > 0 && (
           <TelemetryTimeline
             allSeiMessages={allSeiMessages}
             fps={fps}
@@ -1226,6 +1226,8 @@ export function VideoPlayer({
             onSeek={handleTimelineSeek}
             onDraggingChange={setIsTimelineDragging}
             clipBoundaries={sequence.momentOffsets}
+            event={sequence.event}
+            sequenceStartTime={sequence.startTime}
             isEditMode={isEditMode}
             isTrimming={isTrimming}
             onTrimmingChange={setIsTrimming}
