@@ -968,7 +968,8 @@ export function VideoExporter({
           const realTime = new Date(moment.timestamp.getTime() + localTime * 1000);
           const dynamicDate = realTime.toISOString().split('T')[0];
           const dynamicTime = realTime.toTimeString().split(' ')[0];
-          const isAutopilotActive = showTelemetry && (seiData?.autopilot_state ?? 0) > 0;
+          const autopilotState = seiData?.autopilot_state ?? 0;
+          const isAutopilotActive = showTelemetry && [1, 2, 3].includes(autopilotState);
           drawDateTime(ctx, width, height, dynamicDate, dynamicTime, showTelemetry, isAutopilotActive);
         }
         if (showMap && !(layout === 'pip' && layoutConfig.pip.corners.includes('map'))) {
