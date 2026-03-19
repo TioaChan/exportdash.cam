@@ -406,7 +406,8 @@ export function VideoExporter({
     height: number,
     date: string,
     time: string,
-    telemetryVisible: boolean
+    telemetryVisible: boolean,
+    isAutopilotActive: boolean
   ) => {
     const scale = Math.min(width / 1280, height / 720);
     const padding = 12 * scale;
@@ -429,8 +430,13 @@ export function VideoExporter({
       const circleGap = 5 * scale;
       const telemetryBoxHeight = circleSize * 2 + circleGap + padding * 2;
       const telemetryY = 12 * scale;
-      // Position just below telemetry with a small gap
-      y = telemetryY + telemetryBoxHeight + 8 * scale;
+      let telemetryBottom = telemetryY + telemetryBoxHeight;
+      if (isAutopilotActive) {
+        // Autopilot label in drawTelemetry starts at (y + boxHeight - 1) with height 20*scale
+        telemetryBottom = telemetryY + telemetryBoxHeight - 1 + 20 * scale;
+      }
+      // Position just below telemetry (or autopilot label) with a small gap
+      y = telemetryBottom + 8 * scale;
     } else {
       // Position at top center
       y = 12 * scale;
@@ -962,7 +968,8 @@ export function VideoExporter({
           const realTime = new Date(moment.timestamp.getTime() + localTime * 1000);
           const dynamicDate = realTime.toISOString().split('T')[0];
           const dynamicTime = realTime.toTimeString().split(' ')[0];
-          drawDateTime(ctx, width, height, dynamicDate, dynamicTime, showTelemetry);
+          const isAutopilotActive = showTelemetry && (seiData?.autopilot_state ?? 0) > 0;
+          drawDateTime(ctx, width, height, dynamicDate, dynamicTime, showTelemetry, isAutopilotActive);
         }
         if (showMap && !(layout === 'pip' && layoutConfig.pip.corners.includes('map'))) {
           await drawMiniMap(ctx, seiData, width, height, layout === 'pip' ? 'top-right' : 'bottom-right');
